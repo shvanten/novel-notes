@@ -4,7 +4,7 @@
  * - 每本书 7 个 tab：标题分析 / 导语分析 / 核心梗分析 / 人设分析 / 付费节点分析 / 摘抄 / 其他分析
  * - 每条 item 支持「文字」+「多页手写」(向量笔触：多色笔 / 荧光笔 / 橡皮擦 / 套索选择 / 撤回还原)
  * - 编辑/添加弹层沾满一页，全屏可写
- * - 顶部 tab：📚 我的书 / 📑 全部摘抄 / 💡 全部分析 / 📈 榜单
+ * - 顶部 tab：📚 我的拆书 / 📑 全部摘抄 / 💡 全部分析 / 📈 榜单
  */
 App.registerFeature({
   id: 'notes',
@@ -144,7 +144,7 @@ App.registerFeature({
       '      <div class="nn-side-head">小说拆文</div>' +
       '      <div class="nn-side-group">' +
       '        <button class="nn-side-btn on" data-view="books" type="button">' +
-      '          <span class="nn-side-icon">' + App.icon('book') + '</span><span>我的书</span>' +
+      '          <span class="nn-side-icon">' + App.icon('book') + '</span><span>我的拆书</span>' +
       '        </button>' +
       '        <div class="nn-side-list" id="nn-side-books"></div>' +
       '        <button class="nn-side-new" id="nn-side-new" type="button">＋ 新建书</button>' +
@@ -152,11 +152,6 @@ App.registerFeature({
       '      <div class="nn-side-group">' +
       '        <button class="nn-side-btn" data-view="rank" type="button">' +
       '          <span class="nn-side-icon">' + App.icon('chart') + '</span><span>榜单</span>' +
-      '        </button>' +
-      '      </div>' +
-      '      <div class="nn-side-group">' +
-      '        <button class="nn-side-btn" data-view="summary" type="button">' +
-      '          <span class="nn-side-icon">' + App.icon('tag') + '</span><span>总结</span>' +
       '        </button>' +
       '      </div>' +
       '      <div class="nn-side-sep"></div>' +
@@ -252,7 +247,7 @@ App.registerFeature({
           }).join('')
         : '<div class="nn-shelf-empty">' +
           '  <div class="nn-shelf-emoji">' + App.icon('book') + '</div>' +
-          '  <p class="muted">书架还是空的，点右下角 ＋ 创建你的第一本书吧。</p>' +
+          '  <p class="muted">开拆吧！</p>' +
           '</div>';
       mainEl.innerHTML = '<div class="nn-shelf">' + cards + '</div>';
 
@@ -1263,7 +1258,6 @@ App.registerFeature({
       if (!summaryData) summaryData = buildSummary();
       const { totalItems, totalScore, tagRows } = summaryData;
       const maxScore = tagRows.length ? tagRows[0].score : 1;
-      const top5 = tagRows.slice(0, 5);
       const nav = prebuiltNav || '';
 
       // 各榜单的标签贡献（按榜单分组计算占比）— 趋势
@@ -1280,17 +1274,6 @@ App.registerFeature({
           .map(([t, c]) => ({ t, c, pct: total ? Math.round(c / total * 100) : 0 }));
         return { name: L.name, total: L.items ? L.items.length : 0, top };
       });
-
-      // 横向条形图（各标签热度比较）
-      const bars = top5.map((r) => {
-        const pct = maxScore ? Math.max(2, Math.round(r.score / maxScore * 100)) : 0;
-        return '<div class="nn-sum-row">' +
-          '  <span class="nn-sum-tag">' + App.escapeHtml(r.tag) + '</span>' +
-          '  <span class="nn-sum-bar"><i style="width:' + pct + '%"></i></span>' +
-          '  <span class="nn-sum-c">' + App.formatCount(r.score) + '</span>' +
-          '  <span class="nn-sum-pct muted">' + r.count + ' 次</span>' +
-          '</div>';
-      }).join('');
 
       // 趋势（各榜单的标签占比）
       const trendHtml = trendRows.map((tr) => {
@@ -1319,20 +1302,20 @@ App.registerFeature({
         '    <div class="nn-sum-hero-cell"><span class="muted">总热度</span><b>' + App.formatCount(totalScore) + '</b></div>' +
         '    <div class="nn-sum-hero-cell"><span class="muted">标签数</span><b>' + tagRows.length + '</b></div>' +
         '  </div>' +
-        '  <h3 class="nn-sum-h">各标签的热度比较 <span class="muted">（Top 5 · 按热度）</span></h3>' +
-        '  <div class="nn-sum-bars">' + (bars || '<p class="muted">暂无标签数据</p>') + '</div>' +
         '  <h3 class="nn-sum-h">近期各榜单的标签热度趋势 <span class="muted">（每个榜单内标签占比 · 当前快照）</span></h3>' +
         '  <div class="nn-trend">' + (trendHtml || '<p class="muted">暂无榜单数据</p>') + '</div>' +
-        '  <h3 class="nn-sum-h">完整标签排行 <span class="muted">（按热度倒序）</span></h3>' +
+        '  <h3 class="nn-sum-h">完整标签排行 <span class="muted">（按热度倒序 · 条形显示相对热度）</span></h3>' +
         '  <div class="nn-sum-table">' +
-            tagRows.map((r, i) =>
-              '<div class="nn-sum-table-row">' +
-              '  <span class="nn-sum-t-no">' + (i + 1) + '</span>' +
-              '  <span class="nn-sum-tag">' + App.escapeHtml(r.tag) + '</span>' +
-              '  <span class="muted">' + r.count + ' 次 · 跨 ' + r.lists.length + ' 个榜</span>' +
-              '  <span class="nn-sum-c">' + App.formatCount(r.score) + '</span>' +
-              '</div>'
-            ).join('') +
+            tagRows.map((r, i) => {
+              const pct = maxScore ? Math.max(2, Math.round(r.score / maxScore * 100)) : 0;
+              return '<div class="nn-sum-table-row">' +
+                '  <span class="nn-sum-t-no">' + (i + 1) + '</span>' +
+                '  <span class="nn-sum-tag">' + App.escapeHtml(r.tag) + '</span>' +
+                '  <span class="nn-sum-bar"><i style="width:' + pct + '%"></i></span>' +
+                '  <span class="muted">' + r.count + ' 次 · 跨 ' + r.lists.length + ' 个榜</span>' +
+                '  <span class="nn-sum-c">' + App.formatCount(r.score) + '</span>' +
+                '</div>';
+            }).join('') +
         '  </div>' +
         '</div>';
 
@@ -1382,7 +1365,7 @@ App.registerFeature({
                    '</div>';
           }).join('')
         : '<div class="nn-shelf-empty"><div class="nn-shelf-emoji">' + emoji + '</div>' +
-          '<p class="muted">还没有' + label + '。点「📚 我的书」进入任意一本书，添加内容。</p></div>';
+          '<p class="muted">还没有' + label + '。点「我的拆书」进入任意一本书，添加内容。</p></div>';
 
       mainEl.innerHTML =
         '<div class="nn-all">' +

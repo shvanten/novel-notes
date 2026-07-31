@@ -1188,24 +1188,40 @@ App.registerFeature({
     }
 
     // ---------- 总结：标签热度趋势 + 各标签热度比较 ----------
-    // 解析 tag 字段：形如 "言情·警察 · 66.4 万赞" -> 标签["言情","警察"] + 数值(660000)
+    // 解析 tag 字段：
+    //   - "言情·警察 · 66.4 万赞"       -> 标签["言情","警察"], 评分 66.4 万赞
+    //   - "93.4 黑马指数 · 言情·青梅竹马" -> 标签["言情","青梅竹马"], 评分 93.4 (黑马指数)
+    //   - "古言·爽文"                    -> 标签["古言","爽文"], 评分 0
+    //   - "古言"                          -> 标签["古言"], 评分 0
+    // 评分单位支持：万/亿/千 + 赞/热度/收藏/评论/书，或独立的"黑马指数/黑马/指数"
+    // 解析失败时 tags=[]，score=0
+    const SCORE_UNIT_RE = /(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/g;
     function parseTag(tag) {
-      if (!tag) return { tags: [], score: 0 };
+      if (!tag) return { tags: [], score: 0, scoreLabel: '' };
       const txt = String(tag).trim();
-      // 抽 "数字 + 单位" 部分，如 "66.4 万赞" / "85.2 万热度" / "520 赞"
+      // 1) 抽评分：累加所有"数字+单位"片段（一个 tag 字段里通常只有一段）
       let score = 0;
-      const m = txt.match(/([\d.]+)\s*(万|亿|千)?\s*(赞|热度|收藏|评论)?/);
-      if (m) {
+      let scoreLabel = '';
+      const m = txt.match(/(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/);
+      if (m && m[1]) {
         let n = parseFloat(m[1]) || 0;
         if (m[2] === '万') n *= 10000;
         else if (m[2] === '亿') n *= 100000000;
         else if (m[2] === '千') n *= 1000;
+        // 注意："黑马指数" / "黑马" / "指数" 本身不算量级，数字就是原始分
         score = n;
+        scoreLabel = m[0].trim();
       }
-      // 抽标签：去掉尾部的 "· 数字" 部分，按 · 切
-      const tagPart = txt.split(/\s*·\s*[\d.]/)[0];
-      const tags = tagPart.split(/[·\/、,，\s]+/).map((s) => s.trim()).filter(Boolean);
-      return { tags, score };
+      // 2) 抽标签：先把所有"数字+(单位)"片段删掉，再按分隔符切
+      const labelPart = txt
+        .replace(SCORE_UNIT_RE, ' ')
+        .replace(/[·\/、,，]/g, ' ')
+        .trim();
+      const tags = labelPart
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s && !/^\d+(?:\.\d+)?$/.test(s)); // 过滤掉孤立数字
+      return { tags, score, scoreLabel };
     }
 
     function buildSummary() {

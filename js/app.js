@@ -131,12 +131,16 @@
     setTimeout(() => { const inp = wrap.querySelector('#app-modal-input'); if (inp) { inp.focus(); if (type !== 'number') inp.select(); } }, 80);
   }
 
-  // ---------- 导出 / 导入（仅拆文数据） ----------
+  // ---------- 导出 / 导入（全量备份整个本地数据） ----------
   function exportData() {
     try {
-      const data = localStorage.getItem(DATA_KEY);
-      if (!data) { toast('还没有数据可导出'); return; }
-      const blob = new Blob([data], { type: 'application/json' });
+      const items = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k) items[k] = localStorage.getItem(k);
+      }
+      const payload = { _backup: 'novel-notes', exportedAt: new Date().toISOString(), items };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const d = new Date();
@@ -145,20 +149,26 @@
       a.download = 'chaowen-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json';
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-      toast('已导出拆文数据');
+      toast('已导出全部数据（书架 / 收藏 / 趋势 / 主题）');
     } catch (e) { console.error(e); toast('导出失败'); }
   }
   function importData(file) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const text = String(reader.result || '');
-        const parsed = JSON.parse(text);
-        const books = (parsed && Array.isArray(parsed.books)) ? parsed.books
-                    : (Array.isArray(parsed) ? parsed : null);
-        if (!books) { toast('文件格式不正确（缺少 books）'); return; }
-        confirmDialog('导入数据', '导入会用文件内容覆盖当前拆文数据，确定继续？\n（建议先点「导出」备份当前数据）', () => {
-          localStorage.setItem(DATA_KEY, JSON.stringify({ books: books }));
+        const parsed = JSON.parse(String(reader.result || ''));
+        let items = null;
+        if (parsed && parsed._backup && parsed.items) {
+          items = parsed.items;
+        } else if (parsed && Array.isArray(parsed.books)) {
+          // 兼容旧格式：仅恢复书架
+          items = {}; items[DATA_KEY] = JSON.stringify({ books: parsed.books });
+        } else if (Array.isArray(parsed)) {
+          items = {}; items[DATA_KEY] = JSON.stringify({ books: parsed });
+        }
+        if (!items) { toast('文件格式不正确，无法导入'); return; }
+        confirmDialog('导入数据', '导入会用备份覆盖当前所有本地数据，确定继续？\n（建议先点「导出」备份当前数据）', () => {
+          for (const k in items) { try { localStorage.setItem(k, items[k]); } catch (e) {} }
           toast('已导入，正在刷新…');
           setTimeout(() => location.reload(), 600);
         }, { okText: '导入并覆盖' });

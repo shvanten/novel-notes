@@ -2722,3 +2722,214 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
   .nn-side { position: sticky; top: 0; height: 100%; }
 }
 
+/* ============================================================
+   ▸ UI 升级层（追加）：卡片悬浮 · 页面过渡 · 榜单切换动画
+   - 仅追加样式，不动原有结构与取值，确保现有功能零回归
+   - 动效令牌统一；红涨绿跌配色保持不变
+   ============================================================ */
+
+:root {
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --dur: .34s;
+  --lift: -3px;
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+  --elev-hover: 0 14px 30px rgba(40, 70, 50, .16);
+  --elev-press: 0 4px 12px rgba(40, 70, 50, .12);
+}
+
+/* —— 通用卡片：悬浮抬升 + 阴影 + 描边高亮 —— */
+.nn-rank-item,
+.nn-sum-hero-cell,
+.mo-week-row,
+.lg-sum-row,
+.todo-item,
+.ci-part,
+.st-note,
+.nn-book,
+.nn-shelf-item {
+  transition: transform var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              background var(--dur) var(--ease);
+  will-change: transform;
+}
+.nn-rank-item:hover,
+.nn-sum-hero-cell:hover,
+.mo-week-row:hover,
+.lg-sum-row:hover,
+.todo-item:hover,
+.ci-part:hover,
+.st-note:hover,
+.nn-book:hover,
+.nn-shelf-item:hover {
+  transform: translateY(var(--lift));
+  box-shadow: var(--elev-hover);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--card) 70%, var(--accent) 6%);
+}
+
+/* —— 按钮：悬浮微抬 + 按压回弹 —— */
+.btn { transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), opacity .15s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-deep) 34%, transparent); }
+.btn:active { transform: scale(.97); opacity: .92; }
+
+/* —— 榜单条目：每次切换榜单重放入场（错峰） —— */
+@keyframes rankItemIn {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+.nn-rank-item { animation: rankItemIn .44s var(--ease) both; }
+.nn-rank-item:nth-child(1)  { animation-delay: .00s; }
+.nn-rank-item:nth-child(2)  { animation-delay: .04s; }
+.nn-rank-item:nth-child(3)  { animation-delay: .08s; }
+.nn-rank-item:nth-child(4)  { animation-delay: .12s; }
+.nn-rank-item:nth-child(5)  { animation-delay: .16s; }
+.nn-rank-item:nth-child(6)  { animation-delay: .20s; }
+.nn-rank-item:nth-child(7)  { animation-delay: .24s; }
+.nn-rank-item:nth-child(8)  { animation-delay: .28s; }
+.nn-rank-item:nth-child(9)  { animation-delay: .32s; }
+.nn-rank-item:nth-child(10) { animation-delay: .36s; }
+
+/* —— 顶部榜单切换导航：激活辉光 + 按压 —— */
+.nn-nav-rank-btn.on {
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 32%, transparent);
+  transform: translateY(-1px);
+}
+.nn-nav-rank-btn:active { transform: scale(.95); }
+
+/* —— 面板切换整体淡入（榜单 / 总结重渲染即触发） —— */
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.nn-rank, .nn-sum { animation: panelIn .4s var(--ease) both; }
+
+/* —— 总结页：条形生长 + 区块错峰入场 —— */
+@keyframes barGrow { from { width: 0; } }
+.nn-sum-bar i { animation: barGrow .9s var(--ease) both; }
+@keyframes rowIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+.nn-sum-hero-cell { animation: rowIn .5s var(--ease) both; }
+.nn-sum-row       { animation: rowIn .5s var(--ease) both; }
+.nn-trend-row     { animation: rowIn .5s var(--ease) both; }
+.nn-sum-row:nth-child(1) { animation-delay: .02s; }
+.nn-sum-row:nth-child(2) { animation-delay: .06s; }
+.nn-sum-row:nth-child(3) { animation-delay: .10s; }
+.nn-sum-row:nth-child(4) { animation-delay: .14s; }
+.nn-sum-row:nth-child(5) { animation-delay: .18s; }
+
+/* —— 页面过渡（初始进入） —— */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.feature { animation: pageIn .42s var(--ease) both; }
+#feature { animation: pageIn .42s var(--ease) both; }
+
+/* —— 焦点可见（无障碍） —— */
+.nn-rank-item:focus-visible,
+.nn-nav-rank-btn:focus-visible,
+.nav-item:focus-visible,
+.btn:focus-visible,
+.mo-cal-nav:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* —— 移动端抽屉遮罩淡入 —— */
+.nn-mask-side { transition: opacity .22s ease; }
+
+/* ============================================================
+   ▸ novel-notes 专属升级：书架入场 · 总结配色润色 · 抽屉
+   ============================================================ */
+
+/* 顶部榜单导航：圆角容器 + 轻投影，切换更聚焦 */
+.nn-nav-rank {
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 总结页 hero 卡：渐变数字，强调关键信息 */
+.nn-sum-hero-cell {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.nn-sum-hero-cell b {
+  background: linear-gradient(120deg, var(--accent-deep), var(--accent));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--accent-deep); /* 不支持 background-clip 时回退 */
+}
+
+/* 标签热度条：渐变更鲜明 */
+.nn-sum-bar i {
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent) 70%, color-mix(in srgb, var(--accent) 60%, #fff 40%));
+}
+
+/* 趋势条分段：圆角 + 间隙，更精致 */
+.nn-trend-bar { gap: 2px; padding: 2px; border-radius: 8px; }
+.nn-trend-seg { border-radius: 4px; }
+
+/* 书架卡片入场（我的书视图） */
+@keyframes shelfIn {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.nn-book, .nn-shelf-item { animation: shelfIn .5s var(--ease) both; }
+
+/* 侧边抽屉：遮罩淡入 + 更顺滑阴影 */
+.nn-mask-side.show { animation: maskIn .22s ease both; }
+@keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+.nn-side {
+  background: var(--sidebar-bg);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, .2);
+}
+
+/* —— 尊重「减少动态效果」无障碍偏好 —— */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  .nn-rank-item,
+  .nn-sum-row,
+  .nn-trend-row,
+  .nn-sum-hero-cell,
+  .nn-book,
+  .nn-shelf-item,
+  .mo-week-row,
+  .lg-sum-row,
+  .ci-part,
+  .st-note,
+  .feature,
+  #feature,
+  .nn-rank,
+  .nn-sum {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================================
+   ▸ SVG 图标系统（P0：功能性 emoji → 单色线性 SVG，跨端一致）
+   ============================================================ */
+.ic {
+  width: 1.1em; height: 1.1em;
+  display: inline-block; flex: none;
+  vertical-align: -0.18em;
+  stroke: currentColor; fill: none;
+}
+.nn-side-icon { display: inline-flex; align-items: center; }
+.nn-side-icon .ic { width: 18px; height: 18px; color: var(--text-strong); }
+.nn-book-type .ic,
+.nn-pp-book-tag .ic { width: 13px; height: 13px; vertical-align: -1px; }
+.nn-shelf-emoji .ic { width: 64px; height: 64px; color: var(--accent); }
+
+/* —— P1 排版：数字等宽对齐（热度分/余额等） —— */
+.nn-rank-tag,
+.nn-sum-hero-cell b { font-variant-numeric: tabular-nums; }
+
+/* —— P2 移动端安全区：侧边抽屉底部避开 Home 指示条 —— */
+.nn-side { padding-bottom: env(safe-area-inset-bottom, 0); }
+

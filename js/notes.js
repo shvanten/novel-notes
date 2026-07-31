@@ -144,27 +144,27 @@ App.registerFeature({
       '      <div class="nn-side-head">小说拆文</div>' +
       '      <div class="nn-side-group">' +
       '        <button class="nn-side-btn on" data-view="books" type="button">' +
-      '          <span class="nn-side-icon">📚</span><span>我的书</span>' +
+      '          <span class="nn-side-icon">' + App.icon('book') + '</span><span>我的书</span>' +
       '        </button>' +
       '        <div class="nn-side-list" id="nn-side-books"></div>' +
       '        <button class="nn-side-new" id="nn-side-new" type="button">＋ 新建书</button>' +
       '      </div>' +
       '      <div class="nn-side-group">' +
       '        <button class="nn-side-btn" data-view="rank" type="button">' +
-      '          <span class="nn-side-icon">📈</span><span>榜单</span>' +
+      '          <span class="nn-side-icon">' + App.icon('chart') + '</span><span>榜单</span>' +
       '        </button>' +
       '      </div>' +
       '      <div class="nn-side-group">' +
       '        <button class="nn-side-btn" data-view="summary" type="button">' +
-      '          <span class="nn-side-icon">🏷</span><span>总结</span>' +
+      '          <span class="nn-side-icon">' + App.icon('tag') + '</span><span>总结</span>' +
       '        </button>' +
       '      </div>' +
       '      <div class="nn-side-sep"></div>' +
       '      <button class="nn-side-btn flat" data-view="allQuotes" type="button">' +
-      '        <span class="nn-side-icon">📑</span><span>全部摘抄</span>' +
+      '        <span class="nn-side-icon">' + App.icon('doc') + '</span><span>全部摘抄</span>' +
       '      </button>' +
       '      <button class="nn-side-btn flat" data-view="allAnalyses" type="button">' +
-      '        <span class="nn-side-icon">💡</span><span>全部分析</span>' +
+      '        <span class="nn-side-icon">' + App.icon('bulb') + '</span><span>全部分析</span>' +
       '      </button>' +
       '    </aside>' +
       '    <main class="nn-main" id="nn-main"></main>' +
@@ -241,7 +241,7 @@ App.registerFeature({
                     '    <div class="nn-book-spine"></div>' +
                     '    <div class="nn-book-front">' +
                     '      <div class="nn-book-title">' + App.escapeHtml(b.title) + '</div>' +
-                    '      <div class="nn-book-type nn-book-type-' + tint + '">' + (tint === 'long' ? '📚 长篇' : '📖 短篇') + '</div>' +
+                    '      <div class="nn-book-type nn-book-type-' + tint + '">' + (tint === 'long' ? App.icon('book') + ' 长篇' : App.icon('note') + ' 短篇') + '</div>' +
                     '    </div>' +
                     '    <div class="nn-book-back"></div>' +
                     '  </div>' +
@@ -251,7 +251,7 @@ App.registerFeature({
                     '</div>';
           }).join('')
         : '<div class="nn-shelf-empty">' +
-          '  <div class="nn-shelf-emoji">📚</div>' +
+          '  <div class="nn-shelf-emoji">' + App.icon('book') + '</div>' +
           '  <p class="muted">书架还是空的，点右下角 ＋ 创建你的第一本书吧。</p>' +
           '</div>';
       mainEl.innerHTML = '<div class="nn-shelf">' + cards + '</div>';
@@ -303,7 +303,7 @@ App.registerFeature({
         '<div class="nn-page">' +
         '  <div class="nn-page-bar">' +
         '    <button class="btn ghost sm nn-back-btn" id="nn-back" type="button">← 书架</button>' +
-        '    <span class="nn-pp-book-tag nn-book-type-' + tint + '">' + (tint === 'long' ? '📚 长篇' : '📖 短篇') + '</span>' +
+        '    <span class="nn-pp-book-tag nn-book-type-' + tint + '">' + (tint === 'long' ? App.icon('book') + ' 长篇' : App.icon('note') + ' 短篇') + '</span>' +
         '    <div class="nn-book-title-mini">' + App.escapeHtml(b.title) + '</div>' +
         '    <button class="btn sm ghost" id="nn-edit-book" type="button">编辑</button>' +
         '    <button class="btn sm danger" id="nn-del-book" type="button">删除</button>' +
@@ -318,7 +318,7 @@ App.registerFeature({
         titlePage.innerHTML =
           '<div class="nn-pp-title-card">' +
           '  <h2 class="nn-pp-book-title">' + App.escapeHtml(b.title) + '</h2>' +
-          '  <span class="nn-book-type nn-book-type-' + tint + '">' + (tint === 'long' ? '📚 长篇' : '📖 短篇') + '</span>' +
+          '  <span class="nn-book-type nn-book-type-' + tint + '">' + (tint === 'long' ? App.icon('book') + ' 长篇' : App.icon('note') + ' 短篇') + '</span>' +
           '  <p class="muted nn-pp-meta">共 ' + total + ' 条内容 · 7 个维度</p>' +
           '  <div class="nn-pp-section-head" style="margin-top:14px">' +
           '    <span>标题分析</span>' +
@@ -1049,8 +1049,8 @@ App.registerFeature({
         '  <div>' +
         '    <p class="muted nb-h">类型</p>' +
         '    <div class="nb-type">' +
-        '      <button class="nb-type-btn' + (curType === 'short' ? ' on' : '') + '" data-t="short" type="button">📖 短篇</button>' +
-        '      <button class="nb-type-btn' + (curType === 'long' ? ' on' : '') + '" data-t="long" type="button">📚 长篇</button>' +
+        '      <button class="nb-type-btn' + (curType === 'short' ? ' on' : '') + '" data-t="short" type="button">' + App.icon('note') + ' 短篇</button>' +
+        '      <button class="nb-type-btn' + (curType === 'long' ? ' on' : '') + '" data-t="long" type="button">' + App.icon('book') + ' 长篇</button>' +
         '    </div>' +
         '  </div>' +
         '  <div class="nn-e-btns">' +

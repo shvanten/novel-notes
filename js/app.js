@@ -210,6 +210,9 @@
     registerFeature, navigate: function () {}, getFeatures: () => features,
     toast, escapeHtml, formatCount, confirm: confirmDialog, prompt: promptDialog, closeModal,
     exportData, importData,
+    icon: function (name, cls) {
+      return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#ic-' + name + '"/></svg>';
+    },
   };
   window.App = api;
 

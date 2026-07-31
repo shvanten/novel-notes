@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#6fa860" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>小说拆文</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="assets/icon.svg" />
+  <link rel="apple-touch-icon" href="assets/icon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #nn-root { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+    .app-top {
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 8px;
+      padding: env(safe-area-inset-top, 0) 12px 0; /* iOS 刘海 */
+      padding-top: max(env(safe-area-inset-top, 0px), 10px);
+      padding-bottom: 10px;
+      background: var(--surface);
+      border-bottom: 1px solid rgba(0,0,0,.06);
+      box-shadow: 0 1px 4px rgba(0,0,0,.05);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .app-top h1 { margin: 0; font-size: 17px; font-weight: 700; flex: 1 1 auto; color: var(--text-strong); }
+    .app-top .top-btn {
+      flex: 0 0 auto;
+      border: 1px solid var(--border, #ccc);
+      background: var(--surface-2, #fff);
+      color: var(--text-strong);
+      border-radius: 999px;
+      padding: 6px 12px; font-size: 13px; cursor: pointer; line-height: 1;
+    }
+    .app-top .top-btn:active { transform: scale(.95); }
+    #feature { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    /* 让拆文内容区真正滚动 */
+    #feature .nn { flex: 1 1 auto; min-height: 0; }
+    #feature .nn-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .feature-inner { flex: 1 1 auto; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+    [data-theme="dark"] .app-top { border-bottom-color: rgba(255,255,255,.08); }
+  </style>
+</head>
+<body>
+  <div id="nn-root">
+    <header class="app-top">
+      <h1>📝 小说拆文</h1>
+      <button class="top-btn" id="btn-export" type="button">⬇ 导出</button>
+      <button class="top-btn" id="btn-import" type="button">⬆ 导入</button>
+      <button class="top-btn" id="theme-btn" type="button" aria-label="切换主题">🌙</button>
+      <input type="file" id="import-file" accept="application/json,.json" hidden />
+    </header>
+    <div id="feature"></div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script src="js/notes.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "小说拆文",
+  "short_name": "拆文",
+  "description": "小说拆文便签：每本书 7 维度拆解（标题/导语/核心梗/人设/付费节点/摘抄/其他），支持文字与多页手写。",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#eef4ea",
+  "theme_color": "#6fa860",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

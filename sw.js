@@ -1,5 +1,5 @@
 /* 小说拆文 · 静态缓存（离线可用）。改版后请把版本号 +1 强制更新。 */
-const CACHE = 'chaowen-v2';
+const CACHE = 'chaowen-v3';
 const ASSETS = [
   './',
   'index.html',

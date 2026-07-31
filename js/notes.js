@@ -1097,19 +1097,24 @@ App.registerFeature({
       { t: '死到临头', a: '咸良', tag: '悬疑', d: '作者前作改编电影《恶意》票房 2.54 亿。' },
       { t: '照殿红', a: '盐选热门', tag: '脑洞·短篇', d: '女主手握照殿红四次穿越的时空闭环设定。' },
     ];
+    // 不需要在导航/总结里展示的榜单（黑马指数型/新书型与主榜口径不同，前端过滤即可，不动 rank.json）
+    const HIDDEN_LIST_NAMES = new Set(['全网热议高分佳作', '新书榜']);
+    function filterRankLists(lists) {
+      return (lists || []).filter((L) => !HIDDEN_LIST_NAMES.has(L.name));
+    }
     let rankData = {
       updatedAt: '2026-07-30（内置快照）',
-      lists: [
+      lists: filterRankLists([
         { name: '热度榜', items: RANK.slice(0, 5) },
         { name: '新书榜', items: RANK.slice(5, 8) },
         { name: '推荐榜', items: RANK.slice(0, 3).concat(RANK.slice(6, 8)) },
-      ],
+      ]),
     };
     fetch('data/rank.json', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (j && Array.isArray(j.lists) && j.lists.length) {
-          rankData = j;
+          rankData = Object.assign({}, j, { lists: filterRankLists(j.lists) });
           summaryData = null; // 榜单数据变了，总结需要重算
           if (view === 'rank' || view === 'summary') paint();
         }

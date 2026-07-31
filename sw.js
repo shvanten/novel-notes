@@ -1,5 +1,5 @@
 /* 小说拆文 · 静态缓存（离线可用）。改版后请把版本号 +1 强制更新。 */
-const CACHE = 'chaowen-v7';
+const CACHE = 'chaowen-v8';
 const ASSETS = [
   './',
   'index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   'js/app.js',
   'js/notes.js',
   'data/rank.json',
+  'data/rank-history.json',
   'assets/icon.svg',
 ];
 

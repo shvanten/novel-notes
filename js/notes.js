@@ -303,10 +303,40 @@ App.registerFeature({
         '    <button class="btn sm ghost" id="nn-edit-book" type="button">编辑</button>' +
         '    <button class="btn sm danger" id="nn-del-book" type="button">删除</button>' +
         '  </div>' +
+        '  <div class="nn-book-heat">' +
+        '    <div class="nn-book-heat-head">' +
+        '      <span class="nn-book-heat-title">' + App.icon('chart') + ' 热度趋势</span>' +
+        '      ' + nnSegHtml('nn-book-heat-seg', nnBookPeriod) +
+        '      <button class="nn-fav-star' + (nnIsKept(b.title) ? ' on' : '') + '" data-fav-star="' + App.escapeHtml(b.title) + '" type="button" title="收藏后即使下榜也永久保留该书的历史数据">' +
+                 App.icon('star') + '<span class="nn-fav-star-t">' + (nnIsKept(b.title) ? '已收藏' : '收藏') + '</span></button>' +
+        '    </div>' +
+        '    <div class="nn-line-wrap" id="nn-book-line"></div>' +
+        '  </div>' +
         '  <div class="nn-page-tabs" id="nn-page-tabs">' + tabsBtns + '</div>' +
         '  <div class="nn-pages" id="nn-pages">' + pages + '</div>' +
         '  <div class="nn-page-pager" id="nn-page-pager">' + dots + '</div>' +
         '</div>';
+
+      // 热度趋势卡：周期切换 + 收藏（收藏后下榜也保留历史）
+      function paintBookTrend() {
+        const el = mainEl.querySelector('#nn-book-line');
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod));
+      }
+      nnBindSeg(mainEl, 'nn-book-heat-seg', (p) => { nnBookPeriod = p; paintBookTrend(); });
+      const favBtn = mainEl.querySelector('[data-fav-star]');
+      if (favBtn) {
+        favBtn.addEventListener('click', () => {
+          const t = favBtn.dataset.favStar;
+          const i = nnFavorites.indexOf(t);
+          if (i >= 0) nnFavorites.splice(i, 1); else nnFavorites.push(t);
+          nnSaveFav();
+          const on = favBtn.classList.toggle('on');
+          const label = favBtn.querySelector('.nn-fav-star-t');
+          if (label) label.textContent = on ? '已收藏' : '收藏';
+          App.toast(on ? '已收藏，历史数据将永久保留' : '已取消收藏');
+        });
+      }
+      paintBookTrend();
 
       const titlePage = mainEl.querySelector('.nn-pp[data-pp="title"]');
       if (titlePage) {
@@ -1114,7 +1144,256 @@ App.registerFeature({
           if (view === 'rank' || view === 'summary') paint();
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      // 无论 rank.json 拉取成功与否，都用最终的 rankData 建立/更新今日快照
+      .then(() => { nnInitHistory(); });
+
+    // ---------- 热度历史：每日快照 + 收藏保留 / 下榜清理 ----------
+    const HIST_KEY = 'nnHistory';
+    const FAV_KEY = 'nnFavorites';
+    const HIST_MAX = 400;
+    let nnHistory = [];
+    let nnFavorites = [];
+    let nnHistReady = false;
+    let nnHistLoading = false;
+    let nnCurTag = '';          // 当前查看的标签
+    let nnCurPeriod = 'day';    // 标签趋势周期：day | week | month
+    let nnBookPeriod = 'day';   // 书本趋势周期
+
+    function nnLoadFav() {
+      try { nnFavorites = JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch (e) { nnFavorites = []; }
+      if (!Array.isArray(nnFavorites)) nnFavorites = [];
+    }
+    function nnSaveFav() {
+      try { localStorage.setItem(FAV_KEY, JSON.stringify(nnFavorites)); } catch (e) {}
+    }
+    function nnLoadHist() {
+      try { nnHistory = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch (e) { nnHistory = []; }
+      if (!Array.isArray(nnHistory)) nnHistory = [];
+    }
+    function nnSaveHist() {
+      try { localStorage.setItem(HIST_KEY, JSON.stringify(nnHistory.slice(-HIST_MAX))); } catch (e) {}
+    }
+    function nnToday() {
+      const d = new Date();
+      const pad = (n) => (n < 10 ? '0' + n : '' + n);
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+    // 当前仍在榜的书名集合
+    function nnOnChart() {
+      const s = {};
+      (rankData.lists || []).forEach((L) => { (L.items || []).forEach((it) => { s[it.t] = 1; }); });
+      return s;
+    }
+    // 收藏过、或已加入书架的书：历史永久保留
+    function nnIsKept(title) {
+      if (nnFavorites.indexOf(title) >= 0) return true;
+      return (data.books || []).some((b) => b.title === title);
+    }
+    // 用当前 rankData 写入 / 覆盖今天的快照（同一天多次打开只保留最新一份）
+    function nnEnsureToday() {
+      const lists = (rankData.lists || []).map((L) => ({
+        name: L.name,
+        items: (L.items || []).map((it) => ({ t: it.t, a: it.a, tag: it.tag, d: it.d })),
+      }));
+      if (!lists.length) return;
+      const t = nnToday();
+      const last = nnHistory.length ? nnHistory[nnHistory.length - 1] : null;
+      if (last && last.date === t) last.lists = lists;
+      else nnHistory.push({ date: t, lists: lists });
+    }
+    // 未收藏且已下榜的书：从历史里剔除，避免 localStorage 无限膨胀
+    function nnPurgeDropped() {
+      const onChart = nnOnChart();
+      nnHistory.forEach((snap) => {
+        snap.lists = (snap.lists || []).map((L) => ({
+          name: L.name,
+          items: (L.items || []).filter((it) => onChart[it.t] || nnIsKept(it.t)),
+        }));
+      });
+    }
+    function nnApplySnapshot() {
+      nnEnsureToday();
+      nnPurgeDropped();
+      nnHistory = nnHistory.slice(-HIST_MAX);
+      nnSaveHist();
+    }
+    function nnInitHistory() {
+      if (nnHistReady) { nnApplySnapshot(); return; }
+      if (nnHistLoading) return;               // 归档还在拉，回来后会统一 apply
+      nnLoadHist(); nnLoadFav();
+      if (nnHistory.length) { nnHistReady = true; nnApplySnapshot(); return; }
+      // 首次运行：用仓库里的全局归档做基线，让趋势图一上来就有数据
+      nnHistLoading = true;
+      fetch('data/rank-history.json', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { if (Array.isArray(j) && j.length) nnHistory = j.slice(-HIST_MAX); })
+        .catch(() => {})
+        .then(() => {
+          nnHistLoading = false;
+          nnHistReady = true;
+          nnApplySnapshot();
+          if (view === 'rank' || view === 'summary' || view === 'detail') paint();
+        });
+    }
+
+    // 先把本地副本读出来，保证首屏（书籍详情的收藏星标等）状态正确
+    nnLoadHist();
+    nnLoadFav();
+
+    // ---------- 聚合：日 / 周 / 月 ----------
+    function nnWeekLabel(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      const day = (d.getDay() + 6) % 7;        // 周一为一周开始
+      d.setDate(d.getDate() - day);
+      const pad = (n) => (n < 10 ? '0' + n : '' + n);
+      return { key: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), label: (d.getMonth() + 1) + '/' + d.getDate() };
+    }
+    function nnMonthLabel(dateStr) {
+      const p = dateStr.split('-');
+      return { key: p[0] + '-' + p[1], label: p[0] + '-' + p[1] };
+    }
+    // rows: [{date, value}]，value 可能为 null（当天不在榜）
+    // useMax=true 时同一周/月取峰值（单本书的热度），否则求和（标签总热度）
+    function nnGroup(rows, mode, useMax) {
+      if (mode === 'day') {
+        return rows.map((r) => ({ label: r.date.slice(5), value: r.value == null ? 0 : r.value }));
+      }
+      const buckets = {};
+      const order = [];
+      rows.forEach((r) => {
+        const k = mode === 'week' ? nnWeekLabel(r.date) : nnMonthLabel(r.date);
+        if (!buckets[k.key]) { buckets[k.key] = { label: k.label, vals: [] }; order.push(k.key); }
+        buckets[k.key].vals.push(r.value);
+      });
+      return order.sort().map((key) => {
+        const vals = buckets[key].vals.filter((v) => v != null);
+        let value = 0;
+        if (vals.length) {
+          value = useMax
+            ? Math.max.apply(null, vals)
+            : Math.round(vals.reduce((s, v) => s + v, 0) / vals.length); // 求和会随天数放大，这里取均值更可比
+        }
+        return { label: buckets[key].label, value: value };
+      });
+    }
+    function nnTagSeries(tag, mode) {
+      const rows = nnHistory.map((snap) => {
+        let v = 0;
+        (snap.lists || []).forEach((L) => {
+          if (HIDDEN_LIST_NAMES.has(L.name)) return;
+          (L.items || []).forEach((it) => {
+            const p = parseTag(it.tag);
+            if (p.tags.indexOf(tag) >= 0) v += p.score;
+          });
+        });
+        return { date: snap.date, value: v };
+      });
+      return nnGroup(rows, mode, false);
+    }
+    function nnBookSeries(title, mode) {
+      const rows = nnHistory.map((snap) => {
+        let found = false, v = 0;
+        (snap.lists || []).forEach((L) => {
+          if (HIDDEN_LIST_NAMES.has(L.name)) return;
+          (L.items || []).forEach((it) => {
+            if (it.t === title) { found = true; v = Math.max(v, parseTag(it.tag).score || 0); }
+          });
+        });
+        return { date: snap.date, value: found ? v : null };
+      });
+      return nnGroup(rows, mode, true);
+    }
+
+    // ---------- SVG 折线图（面积 + 折线 + 数据点 + 悬浮提示） ----------
+    function nnLineChart(series) {
+      if (!series || !series.length) return '<p class="muted nn-line-empty">暂无数据，历史会从每天打开时开始累积。</p>';
+      const W = 680, H = 220, padL = 52, padR = 12, padT = 14, padB = 26;
+      const iw = W - padL - padR, ih = H - padT - padB;
+      let maxV = 1;
+      series.forEach((s) => { if (s.value > maxV) maxV = s.value; });
+      const n = series.length;
+      const X = (i) => (n <= 1 ? padL + iw / 2 : padL + iw * i / (n - 1));
+      const Y = (v) => padT + ih * (1 - v / maxV);
+      const pts = series.map((s, i) => [X(i), Y(s.value)]);
+      const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+      const area = line +
+        ' L' + pts[n - 1][0].toFixed(1) + ' ' + (padT + ih) +
+        ' L' + pts[0][0].toFixed(1) + ' ' + (padT + ih) + ' Z';
+
+      let grid = '', yt = '';
+      for (let g = 0; g <= 4; g++) {
+        const gy = padT + ih * g / 4;
+        const gv = Math.round(maxV * (1 - g / 4));
+        grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
+        yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + App.formatCount(gv) + '</text>';
+      }
+      let xl = '';
+      const step = Math.max(1, Math.ceil(n / 6));
+      series.forEach((s, i) => {
+        if (i % step === 0 || i === n - 1) {
+          xl += '<text x="' + X(i).toFixed(1) + '" y="' + (H - 8) + '" class="nn-axis-x">' + App.escapeHtml(s.label) + '</text>';
+        }
+      });
+      let dots = '';
+      series.forEach((s, i) => {
+        dots += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(s.value).toFixed(1) + '" r="3" class="nn-dot">' +
+          '<title>' + App.escapeHtml(s.label) + '：' + App.formatCount(s.value) + '</title></circle>';
+      });
+      return '<svg class="nn-line" viewBox="0 0 ' + W + ' ' + H + '" role="img">' +
+        '<defs><linearGradient id="nnGrad" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="var(--accent)" stop-opacity="0.28"/>' +
+        '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0.02"/></linearGradient></defs>' +
+        grid + yt + xl +
+        '<path d="' + area + '" fill="url(#nnGrad)" class="nn-area"/>' +
+        '<path d="' + line + '" fill="none" class="nn-line-path"/>' +
+        dots +
+        '</svg>';
+    }
+    // 周期切换段控件
+    function nnSegHtml(id, cur) {
+      return '<div class="nn-seg" id="' + id + '">' +
+        [['day', '日'], ['week', '周'], ['month', '月']].map((p) =>
+          '<button data-period="' + p[0] + '"' + (cur === p[0] ? ' class="on"' : '') + ' type="button">' + p[1] + '</button>'
+        ).join('') +
+        '</div>';
+    }
+    function nnBindSeg(scope, id, onPick) {
+      const seg = scope.querySelector('#' + id);
+      if (!seg) return;
+      seg.querySelectorAll('button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+          btn.classList.add('on');
+          onPick(btn.dataset.period);
+        });
+      });
+    }
+    // 单本书的热度趋势弹窗（榜单条目点开）
+    function nnOpenBookTrend(title) {
+      if (!title) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'nn-modal-mask';
+      overlay.innerHTML =
+        '<div class="nn-modal" role="dialog" aria-modal="true">' +
+        '  <div class="nn-modal-head"><b>《' + App.escapeHtml(title) + '》热度趋势</b>' +
+        '    <button class="nn-modal-x" type="button" aria-label="关闭">×</button></div>' +
+        '  ' + nnSegHtml('nn-modal-seg', 'day') +
+        '  <div class="nn-line-wrap" id="nn-modal-line"></div>' +
+        '  <div class="nn-modal-meta">仅统计主榜（不含隐藏榜单）· 未在榜的日期按 0 计。' +
+        (nnIsKept(title) ? '该书已收藏，历史将永久保留。' : '收藏或加入书架后，下榜也会保留历史。') +
+        '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      const draw = (p) => {
+        const el = overlay.querySelector('#nn-modal-line');
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p));
+      };
+      draw('day');
+      nnBindSeg(overlay, 'nn-modal-seg', draw);
+      overlay.querySelector('.nn-modal-x').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    }
 
     function paintRank() {
       // 顶部一行 tab：每个榜单一个 + 「总结」
@@ -1139,7 +1418,7 @@ App.registerFeature({
 
       const cur = lists.find((L) => L.name === activeRankKey) || lists[0] || { name: '榜单', items: [] };
       const listHtml = (cur.items || []).map((r, i) =>
-        '<div class="nn-rank-item">' +
+        '<div class="nn-rank-item" data-open="' + App.escapeHtml(r.t) + '" title="点击查看《' + App.escapeHtml(r.t) + '》热度趋势">' +
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
         '  <div class="nn-rank-main">' +
         '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
@@ -1154,7 +1433,7 @@ App.registerFeature({
       mainEl.innerHTML =
         '<div class="nn-rank">' +
         '  <div class="nn-nav-rank" id="nn-nav-rank">' + navHtml + '</div>' +
-        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点「收藏为书」即可创建该书的拆文本。</p>' +
+        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点条目看热度趋势，点「收藏为书」创建拆文本。</p>' +
         '  <div class="nn-rank-list">' + listHtml + '</div>' +
         '</div>';
 
@@ -1166,9 +1445,14 @@ App.registerFeature({
           paintRank();
         });
       });
+      // 点条目 → 该书热度趋势弹窗
+      mainEl.querySelectorAll('.nn-rank-item').forEach((it) => {
+        it.addEventListener('click', () => nnOpenBookTrend(it.dataset.open));
+      });
       // 收藏为书
       mainEl.querySelectorAll('[data-fav]').forEach((b) =>
-        b.addEventListener('click', () => {
+        b.addEventListener('click', (e) => {
+          e.stopPropagation(); // 别冒泡到条目，否则会同时弹出趋势图
           const name = b.dataset.fav;
           const empty = { titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [], charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [] };
           data.books.push(Object.assign({
@@ -1259,6 +1543,9 @@ App.registerFeature({
       const { totalItems, totalScore, tagRows } = summaryData;
       const maxScore = tagRows.length ? tagRows[0].score : 1;
       const nav = prebuiltNav || '';
+      // 折线图默认选中热度第一的标签；若之前选的标签已不在榜则回退
+      const topTags = tagRows.slice(0, 12).map((r) => r.tag);
+      if (!nnCurTag || topTags.indexOf(nnCurTag) < 0) nnCurTag = topTags[0] || '';
 
       // 各榜单的标签贡献（按榜单分组计算占比）— 趋势
       const lists = rankData.lists || [];
@@ -1304,6 +1591,19 @@ App.registerFeature({
         '  </div>' +
         '  <h3 class="nn-sum-h">近期各榜单的标签热度趋势 <span class="muted">（每个榜单内标签占比 · 当前快照）</span></h3>' +
         '  <div class="nn-trend">' + (trendHtml || '<p class="muted">暂无榜单数据</p>') + '</div>' +
+        '  <div class="nn-trend-chart-card">' +
+        '    <h3 class="nn-sum-h">标签热度趋势 <span class="muted">（折线 · 日 / 周 / 月）</span></h3>' +
+        '    <div class="nn-trend-ctrl">' +
+        '      <div class="nn-tag-chips" id="nn-tag-chips">' +
+               tagRows.slice(0, 12).map((r) =>
+                 '<button class="nn-tag-chip' + (r.tag === nnCurTag ? ' on' : '') +
+                 '" data-tag="' + App.escapeHtml(r.tag) + '" type="button">' + App.escapeHtml(r.tag) + '</button>'
+               ).join('') +
+        '      </div>' +
+        '      ' + nnSegHtml('nn-period-seg', nnCurPeriod) +
+        '    </div>' +
+        '    <div class="nn-line-wrap" id="nn-tag-line"></div>' +
+        '  </div>' +
         '  <h3 class="nn-sum-h">完整标签排行 <span class="muted">（按热度倒序 · 条形显示相对热度）</span></h3>' +
         '  <div class="nn-sum-table">' +
             tagRows.map((r, i) => {
@@ -1318,6 +1618,22 @@ App.registerFeature({
             }).join('') +
         '  </div>' +
         '</div>';
+
+      // 标签热度趋势：切标签 / 切周期
+      function paintTagTrend() {
+        const el = mainEl.querySelector('#nn-tag-line');
+        if (el) el.innerHTML = nnLineChart(nnTagSeries(nnCurTag, nnCurPeriod));
+      }
+      mainEl.querySelectorAll('#nn-tag-chips .nn-tag-chip').forEach((c) => {
+        c.addEventListener('click', () => {
+          mainEl.querySelectorAll('#nn-tag-chips .nn-tag-chip').forEach((x) => x.classList.remove('on'));
+          c.classList.add('on');
+          nnCurTag = c.dataset.tag;
+          paintTagTrend();
+        });
+      });
+      nnBindSeg(mainEl, 'nn-period-seg', (p) => { nnCurPeriod = p; paintTagTrend(); });
+      paintTagTrend();
 
       if (nav) {
         // 在榜单页内部：绑定顶部 tab

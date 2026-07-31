@@ -34,6 +34,14 @@
     return String(s).replace(/[&<>"']/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+  // 数字格式化：把 660000 渲染成 "66.0 万"，10123 -> "1.01 万"，等
+  function formatCount(n) {
+    if (typeof n !== 'number' || !isFinite(n) || n <= 0) return n ? String(n) : '0';
+    if (n >= 100000000) return (n / 100000000).toFixed(n % 100000000 ? 1 : 0) + ' 亿';
+    if (n >= 10000) return (n / 10000).toFixed((n % 10000) ? 1 : 0) + ' 万';
+    if (n >= 1000) return (n / 1000).toFixed(1) + ' 千';
+    return String(Math.round(n));
+  }
   let toastTimer;
   function toast(msg) {
     let el = document.getElementById('toast');
@@ -200,7 +208,7 @@
 
   const api = {
     registerFeature, navigate: function () {}, getFeatures: () => features,
-    toast, escapeHtml, confirm: confirmDialog, prompt: promptDialog, closeModal,
+    toast, escapeHtml, formatCount, confirm: confirmDialog, prompt: promptDialog, closeModal,
     exportData, importData,
   };
   window.App = api;

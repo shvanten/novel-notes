@@ -127,42 +127,107 @@ App.registerFeature({
     const PEN_COLORS = ['#274027', '#1f3a8a', '#b82929', '#c47a16', '#2f7d32', '#8a2b8a', '#222222', '#0d6b6b'];
 
     // ---------- 状态 ----------
-    let view = 'books';           // books | detail | rank | allQuotes | allAnalyses
+    let view = 'books';           // books | detail | rank | summary | allQuotes | allAnalyses
     let currentBookId = null;
     let suppressPaint = false;
     let activeTabKey = 'title';   // 记录最后一次停留的分页，重绘后恢复，避免保存后跳回标题
+    let activeRankKey = null;     // 当前选中的榜单（在 summary 视图下用于顶部导航）
+    let summaryData = null;       // 标签分析缓存（rankData 变时重建）
 
-    // ---------- 骨架 ----------
+    // ---------- 骨架：左侧导航 + 右侧详情 ----------
     container.innerHTML =
       '<div class="nn">' +
-      '  <div class="nn-head" id="nn-head">' +
-      '    <h2 id="nn-title">小说拆文</h2>' +
+      '  <button class="nn-menu-btn" id="nn-menu" type="button" aria-label="导航">☰</button>' +
+      '  <div class="nn-mask-side" id="nn-mask-side"></div>' +
+      '  <div class="nn-split">' +
+      '    <aside class="nn-side" id="nn-side">' +
+      '      <div class="nn-side-head">小说拆文</div>' +
+      '      <div class="nn-side-group">' +
+      '        <button class="nn-side-btn on" data-view="books" type="button">' +
+      '          <span class="nn-side-icon">📚</span><span>我的书</span>' +
+      '        </button>' +
+      '        <div class="nn-side-list" id="nn-side-books"></div>' +
+      '        <button class="nn-side-new" id="nn-side-new" type="button">＋ 新建书</button>' +
+      '      </div>' +
+      '      <div class="nn-side-group">' +
+      '        <button class="nn-side-btn" data-view="rank" type="button">' +
+      '          <span class="nn-side-icon">📈</span><span>榜单</span>' +
+      '        </button>' +
+      '      </div>' +
+      '      <div class="nn-side-group">' +
+      '        <button class="nn-side-btn" data-view="summary" type="button">' +
+      '          <span class="nn-side-icon">🏷</span><span>总结</span>' +
+      '        </button>' +
+      '      </div>' +
+      '      <div class="nn-side-sep"></div>' +
+      '      <button class="nn-side-btn flat" data-view="allQuotes" type="button">' +
+      '        <span class="nn-side-icon">📑</span><span>全部摘抄</span>' +
+      '      </button>' +
+      '      <button class="nn-side-btn flat" data-view="allAnalyses" type="button">' +
+      '        <span class="nn-side-icon">💡</span><span>全部分析</span>' +
+      '      </button>' +
+      '    </aside>' +
+      '    <main class="nn-main" id="nn-main"></main>' +
       '  </div>' +
-      '  <div class="nn-tabs" id="nn-tabs">' +
-      '    <button class="nn-tab on" data-view="books" type="button">📚 我的书</button>' +
-      '    <button class="nn-tab" data-view="allQuotes" type="button">📑 全部摘抄</button>' +
-      '    <button class="nn-tab" data-view="allAnalyses" type="button">💡 全部分析</button>' +
-      '    <button class="nn-tab" data-view="rank" type="button">📈 榜单</button>' +
-      '  </div>' +
-      '  <div class="nn-body" id="nn-body"></div>' +
       '  <button class="nn-fab" id="nn-fab" type="button" aria-label="新建">＋</button>' +
       '</div>';
 
-    const bodyEl = container.querySelector('#nn-body');
-    const titleEl = container.querySelector('#nn-title');
-    const tabsEl = container.querySelector('#nn-tabs');
+    const mainEl = container.querySelector('#nn-main');
+    const sideEl = container.querySelector('#nn-side');
+    const sideBooksEl = container.querySelector('#nn-side-books');
     const fabEl = container.querySelector('#nn-fab');
+    const menuBtn = container.querySelector('#nn-menu');
+    const maskSide = container.querySelector('#nn-mask-side');
 
-    tabsEl.addEventListener('click', (e) => {
-      const b = e.target.closest('.nn-tab');
-      if (!b) return;
-      view = b.dataset.view;
-      tabsEl.querySelectorAll('.nn-tab').forEach((t) => t.classList.toggle('on', t === b));
-      if (view !== 'detail') currentBookId = null;
-      fabEl.style.display = (view === 'books') ? '' : 'none';
-      paint();
+    // 侧边栏点击：切换视图
+    container.querySelectorAll('.nn-side-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        const v = b.dataset.view;
+        if (!v) return;
+        if (v !== 'detail') currentBookId = null;
+        if (v !== 'rank' && v !== 'summary') activeRankKey = null;
+        view = v;
+        paintSide();
+        paint();
+        // 移动端点击后收起侧边栏
+        if (window.innerWidth < 768) sideEl.classList.remove('open');
+      });
+    });
+    container.querySelector('#nn-side-new').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openBookEditor(null);
     });
     fabEl.addEventListener('click', () => openBookEditor(null));
+    menuBtn.addEventListener('click', () => {
+      sideEl.classList.toggle('open');
+    });
+    maskSide.addEventListener('click', () => sideEl.classList.remove('open'));
+
+    // 侧边栏高亮 + 书本列表（侧栏始终展示所有书）
+    function paintSide() {
+      container.querySelectorAll('.nn-side-btn').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
+      const showBooks = (view === 'books' || view === 'detail');
+      sideBooksEl.style.display = showBooks ? '' : 'none';
+      container.querySelector('#nn-side-new').style.display = showBooks ? '' : 'none';
+      sideBooksEl.innerHTML = data.books.map((b) => {
+        const on = (view === 'detail' && b.id === currentBookId) ? ' on' : '';
+        return '<button class="nn-side-book' + on + '" data-bid="' + b.id + '" type="button">' +
+          '<span class="nn-side-book-e">' + (b.emoji || '📕') + '</span>' +
+          '<span class="nn-side-book-t">' + App.escapeHtml(b.title) + '</span>' +
+          '</button>';
+      }).join('');
+      sideBooksEl.querySelectorAll('.nn-side-book').forEach((b) => {
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          currentBookId = b.dataset.bid;
+          activeTabKey = 'title';
+          view = 'detail';
+          paintSide();
+          paint();
+          if (window.innerWidth < 768) sideEl.classList.remove('open');
+        });
+      });
+    }
 
     // ---------- 我的书（书架） ----------
     function paintBooks() {
@@ -189,9 +254,9 @@ App.registerFeature({
           '  <div class="nn-shelf-emoji">📚</div>' +
           '  <p class="muted">书架还是空的，点右下角 ＋ 创建你的第一本书吧。</p>' +
           '</div>';
-      bodyEl.innerHTML = '<div class="nn-shelf">' + cards + '</div>';
+      mainEl.innerHTML = '<div class="nn-shelf">' + cards + '</div>';
 
-      bodyEl.querySelectorAll('.nn-book').forEach((card) => {
+      mainEl.querySelectorAll('.nn-book').forEach((card) => {
           card.addEventListener('click', () => {
             if (card.classList.contains('opening')) return;
             card.classList.add('opening');
@@ -234,7 +299,7 @@ App.registerFeature({
         '<span class="nn-page-pager-dot' + (i === 0 ? ' on' : '') + '" data-go="' + i + '"></span>'
       ).join('');
 
-      bodyEl.innerHTML =
+      mainEl.innerHTML =
         '<div class="nn-page">' +
         '  <div class="nn-page-bar">' +
         '    <button class="btn ghost sm nn-back-btn" id="nn-back" type="button">← 书架</button>' +
@@ -248,7 +313,7 @@ App.registerFeature({
         '  <div class="nn-page-pager" id="nn-page-pager">' + dots + '</div>' +
         '</div>';
 
-      const titlePage = bodyEl.querySelector('.nn-pp[data-pp="title"]');
+      const titlePage = mainEl.querySelector('.nn-pp[data-pp="title"]');
       if (titlePage) {
         titlePage.innerHTML =
           '<div class="nn-pp-title-card">' +
@@ -267,32 +332,25 @@ App.registerFeature({
           '</div>';
       }
 
-      bodyEl.querySelector('#nn-back').addEventListener('click', () => {
+      mainEl.querySelector('#nn-back').addEventListener('click', () => {
         view = 'books'; currentBookId = null;
-        fabEl.style.display = ''; titleEl.textContent = '小说拆文';
-        tabsEl.querySelector('[data-view="books"]').classList.add('on');
-        tabsEl.querySelectorAll('[data-view]').forEach((t) => { if (t.dataset.view !== 'books') t.classList.remove('on'); });
-        paint();
+        paintSide(); paint();
       });
-      bodyEl.querySelector('#nn-edit-book').addEventListener('click', () => openBookEditor(b));
-      bodyEl.querySelector('#nn-del-book').addEventListener('click', () => {
+      mainEl.querySelector('#nn-edit-book').addEventListener('click', () => openBookEditor(b));
+      mainEl.querySelector('#nn-del-book').addEventListener('click', () => {
         const sum = TABS.map((t) => (b[t.field] || []).length + ' ' + t.short).join(' · ');
         App.confirm('删除这本书', '《' + b.title + '》\n' + sum + '\n\n删除后无法恢复，继续？', () => {
           data.books = data.books.filter((x) => x.id !== b.id);
           save();
           view = 'books'; currentBookId = null;
-          titleEl.textContent = '小说拆文';
-          fabEl.style.display = '';
-          tabsEl.querySelector('[data-view="books"]').classList.add('on');
-          tabsEl.querySelectorAll('[data-view]').forEach((t) => { if (t.dataset.view !== 'books') t.classList.remove('on'); });
-          paint();
+          paintSide(); paint();
           App.toast('已删除');
         });
       });
 
-      const pagesEl = bodyEl.querySelector('#nn-pages');
-      const tabBtns = bodyEl.querySelectorAll('.nn-page-tab');
-      const pagerDots = bodyEl.querySelectorAll('.nn-page-pager-dot');
+      const pagesEl = mainEl.querySelector('#nn-pages');
+      const tabBtns = mainEl.querySelectorAll('.nn-page-tab');
+      const pagerDots = mainEl.querySelectorAll('.nn-page-pager-dot');
       function goTo(i) {
         const w = pagesEl.clientWidth || 1;
         pagesEl.scrollTo({ left: i * w, behavior: 'smooth' });
@@ -306,10 +364,10 @@ App.registerFeature({
       tabBtns.forEach((bb, i) => bb.addEventListener('click', () => { activeTabKey = TABS[i].key; goTo(i); }));
       pagerDots.forEach((d) => d.addEventListener('click', () => { const i = +d.dataset.go; if (TABS[i]) activeTabKey = TABS[i].key; goTo(i); }));
 
-      bodyEl.querySelectorAll('[data-add]').forEach((btn) => {
+      mainEl.querySelectorAll('[data-add]').forEach((btn) => {
         btn.addEventListener('click', () => openItemEditor(b, btn.dataset.add, null, paintDetail));
       });
-      bodyEl.querySelectorAll('[data-iedit]').forEach((btn) => {
+      mainEl.querySelectorAll('[data-iedit]').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const [k, iid] = btn.dataset.iedit.split('|');
@@ -318,7 +376,7 @@ App.registerFeature({
           if (it) openItemEditor(b, k, it, paintDetail);
         });
       });
-      bodyEl.querySelectorAll('[data-idel]').forEach((btn) => {
+      mainEl.querySelectorAll('[data-idel]').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const [k, iid] = btn.dataset.idel.split('|');
@@ -379,7 +437,7 @@ App.registerFeature({
 
     // 绑定所有「查看手写大图」
     function bindViewers() {
-      bodyEl.querySelectorAll('[data-vd]').forEach((el) => {
+      mainEl.querySelectorAll('[data-vd]').forEach((el) => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           const [k, bid, iid, idx] = el.dataset.vd.split('|');
@@ -1049,32 +1107,67 @@ App.registerFeature({
     };
     fetch('data/rank.json', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j && Array.isArray(j.lists) && j.lists.length) { rankData = j; if (view === 'rank') paintRank(); } })
+      .then((j) => {
+        if (j && Array.isArray(j.lists) && j.lists.length) {
+          rankData = j;
+          summaryData = null; // 榜单数据变了，总结需要重算
+          if (view === 'rank' || view === 'summary') paint();
+        }
+      })
       .catch(() => {});
 
     function paintRank() {
-      const listsHtml = rankData.lists.map((L) =>
-        '<div class="nn-rank-list-name">' + App.escapeHtml(L.name) + '</div>' +
-        (L.items || []).map((r, i) =>
-          '<div class="nn-rank-item">' +
-          '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
-          '  <div class="nn-rank-main">' +
-          '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
-            (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(r.tag) + '</span>' : '') + '</div>' +
-          '    <div class="nn-rank-author muted">' + App.escapeHtml(r.a || '') + '</div>' +
-          '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
-          '  </div>' +
-          '  <button class="nn-chip sm nn-rank-fav" data-fav="' + App.escapeHtml(r.t) + '" type="button">收藏为书</button>' +
-          '</div>'
-        ).join('')
+      // 顶部一行 tab：每个榜单一个 + 「总结」
+      const lists = rankData.lists || [];
+      if (!activeRankKey || (activeRankKey !== '__summary' && !lists.find((L) => L.name === activeRankKey))) {
+        activeRankKey = lists[0] ? lists[0].name : '热度榜';
+      }
+      const navHtml = lists.map((L) =>
+        '<button class="nn-nav-rank-btn' + (L.name === activeRankKey ? ' on' : '') +
+        '" data-rank="' + App.escapeHtml(L.name) + '" type="button">' +
+        App.escapeHtml(L.name) + '<i class="nn-nav-rank-count">' + (L.items ? L.items.length : 0) + '</i>' +
+        '</button>'
+      ).join('') +
+        '<button class="nn-nav-rank-btn' + (activeRankKey === '__summary' ? ' on' : '') +
+        '" data-rank="__summary" type="button">📊 总结</button>';
+
+      if (activeRankKey === '__summary') {
+        // 顶部导航选了「总结」→ 直接渲染总结
+        paintSummary(navHtml);
+        return;
+      }
+
+      const cur = lists.find((L) => L.name === activeRankKey) || lists[0] || { name: '榜单', items: [] };
+      const listHtml = (cur.items || []).map((r, i) =>
+        '<div class="nn-rank-item">' +
+        '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
+        '  <div class="nn-rank-main">' +
+        '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
+          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(r.tag) + '</span>' : '') + '</div>' +
+        '    <div class="nn-rank-author muted">' + App.escapeHtml(r.a || '') + '</div>' +
+        '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
+        '  </div>' +
+        '  <button class="nn-chip sm nn-rank-fav" data-fav="' + App.escapeHtml(r.t) + '" type="button">收藏为书</button>' +
+        '</div>'
       ).join('');
-      bodyEl.innerHTML =
+
+      mainEl.innerHTML =
         '<div class="nn-rank">' +
-        '  <p class="muted nn-rank-tip">知乎盐言故事榜单 · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '（内置榜单快照，不含长篇榜）。点「收藏为书」即可创建该书的拆文本。</p>' +
-          listsHtml +
+        '  <div class="nn-nav-rank" id="nn-nav-rank">' + navHtml + '</div>' +
+        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点「收藏为书」即可创建该书的拆文本。</p>' +
+        '  <div class="nn-rank-list">' + listHtml + '</div>' +
         '</div>';
 
-      bodyEl.querySelectorAll('[data-fav]').forEach((b) =>
+      // 顶部 tab 切换
+      mainEl.querySelectorAll('.nn-nav-rank-btn').forEach((b) => {
+        b.addEventListener('click', (e) => {
+          const cur = e.currentTarget;
+          activeRankKey = cur.getAttribute('data-rank') || cur.dataset.rank;
+          paintRank();
+        });
+      });
+      // 收藏为书
+      mainEl.querySelectorAll('[data-fav]').forEach((b) =>
         b.addEventListener('click', () => {
           const name = b.dataset.fav;
           const empty = { titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [], charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [] };
@@ -1084,8 +1177,157 @@ App.registerFeature({
           }, empty));
           save();
           App.toast('已创建《' + name + '》到书架');
+          paintSide();
         })
       );
+    }
+
+    // ---------- 总结：标签热度趋势 + 各标签热度比较 ----------
+    // 解析 tag 字段：形如 "言情·警察 · 66.4 万赞" -> 标签["言情","警察"] + 数值(660000)
+    function parseTag(tag) {
+      if (!tag) return { tags: [], score: 0 };
+      const txt = String(tag).trim();
+      // 抽 "数字 + 单位" 部分，如 "66.4 万赞" / "85.2 万热度" / "520 赞"
+      let score = 0;
+      const m = txt.match(/([\d.]+)\s*(万|亿|千)?\s*(赞|热度|收藏|评论)?/);
+      if (m) {
+        let n = parseFloat(m[1]) || 0;
+        if (m[2] === '万') n *= 10000;
+        else if (m[2] === '亿') n *= 100000000;
+        else if (m[2] === '千') n *= 1000;
+        score = n;
+      }
+      // 抽标签：去掉尾部的 "· 数字" 部分，按 · 切
+      const tagPart = txt.split(/\s*·\s*[\d.]/)[0];
+      const tags = tagPart.split(/[·\/、,，\s]+/).map((s) => s.trim()).filter(Boolean);
+      return { tags, score };
+    }
+
+    function buildSummary() {
+      const lists = rankData.lists || [];
+      // 1) 全榜书数
+      const totalItems = lists.reduce((s, L) => s + (L.items ? L.items.length : 0), 0);
+      // 2) 全榜总热度分
+      let totalScore = 0;
+      // 3) 标签维度累计
+      const tagCount = {};    // 标签 -> 出现次数
+      const tagScore = {};    // 标签 -> 热度累计
+      const tagLists = {};    // 标签 -> 在哪些榜单出现
+      const tagRanks = {};    // 标签 -> [各榜单名次] 用于趋势比较
+      const positionScore = (rank, total) => Math.max(1, total - rank + 1);
+      lists.forEach((L) => {
+        (L.items || []).forEach((it, i) => {
+          const { tags, score } = parseTag(it.tag);
+          totalScore += score;
+          tags.forEach((tg) => {
+            tagCount[tg] = (tagCount[tg] || 0) + 1;
+            tagScore[tg] = (tagScore[tg] || 0) + score;
+            (tagLists[tg] = tagLists[tg] || new Set()).add(L.name);
+            (tagRanks[tg] = tagRanks[tg] || []).push({ list: L.name, rank: i + 1, total: L.items.length, score, weight: positionScore(i + 1, L.items.length) });
+          });
+        });
+      });
+      // 排序
+      const tagRows = Object.keys(tagCount).map((tg) => ({
+        tag: tg,
+        count: tagCount[tg],
+        score: tagScore[tg],
+        lists: Array.from(tagLists[tg] || []),
+        ranks: tagRanks[tg] || [],
+      })).sort((a, b) => b.score - a.score);
+      return { totalItems, totalScore, tagRows };
+    }
+
+    function paintSummary(prebuiltNav) {
+      if (!summaryData) summaryData = buildSummary();
+      const { totalItems, totalScore, tagRows } = summaryData;
+      const maxScore = tagRows.length ? tagRows[0].score : 1;
+      const top5 = tagRows.slice(0, 5);
+      const nav = prebuiltNav || '';
+
+      // 各榜单的标签贡献（按榜单分组计算占比）— 趋势
+      const lists = rankData.lists || [];
+      const trendRows = lists.map((L) => {
+        const counts = {};
+        let total = 0;
+        (L.items || []).forEach((it) => {
+          const { tags } = parseTag(it.tag);
+          tags.forEach((tg) => { counts[tg] = (counts[tg] || 0) + 1; total++; });
+        });
+        // 选 top3 标签
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3)
+          .map(([t, c]) => ({ t, c, pct: total ? Math.round(c / total * 100) : 0 }));
+        return { name: L.name, total: L.items ? L.items.length : 0, top };
+      });
+
+      // 横向条形图（各标签热度比较）
+      const bars = top5.map((r) => {
+        const pct = maxScore ? Math.max(2, Math.round(r.score / maxScore * 100)) : 0;
+        return '<div class="nn-sum-row">' +
+          '  <span class="nn-sum-tag">' + App.escapeHtml(r.tag) + '</span>' +
+          '  <span class="nn-sum-bar"><i style="width:' + pct + '%"></i></span>' +
+          '  <span class="nn-sum-c">' + App.formatCount(r.score) + '</span>' +
+          '  <span class="nn-sum-pct muted">' + r.count + ' 次</span>' +
+          '</div>';
+      }).join('');
+
+      // 趋势（各榜单的标签占比）
+      const trendHtml = trendRows.map((tr) => {
+        const segs = tr.top.map((s, i) =>
+          '<span class="nn-trend-seg" style="flex:' + s.c +
+          ';background:' + ['#6fa860', '#7aa6c2', '#c47a16'][i % 3] +
+          '" title="' + App.escapeHtml(s.t) + ' · ' + s.c + '次(' + s.pct + '%)"></span>'
+        ).join('') + '<span class="nn-trend-seg rest" style="flex:' + Math.max(0, tr.total - tr.top.reduce((s, x) => s + x.c, 0)) + '"></span>';
+        return '<div class="nn-trend-row">' +
+          '  <span class="nn-trend-name">' + App.escapeHtml(tr.name) + '</span>' +
+          '  <span class="nn-trend-bar">' + segs + '</span>' +
+          '  <span class="nn-trend-tags">' + tr.top.map((s) => '<i>' + App.escapeHtml(s.t) + ' ' + s.pct + '%</i>').join(' ') + '</span>' +
+          '</div>';
+      }).join('');
+
+      // 顶部导航（如果在榜单页内）
+      const navHtml = nav
+        ? '<div class="nn-nav-rank">' + nav + '</div>'
+        : '';
+
+      mainEl.innerHTML =
+        '<div class="nn-sum">' +
+        navHtml +
+        '  <div class="nn-sum-hero">' +
+        '    <div class="nn-sum-hero-cell"><span class="muted">在榜书数</span><b>' + totalItems + '</b></div>' +
+        '    <div class="nn-sum-hero-cell"><span class="muted">总热度</span><b>' + App.formatCount(totalScore) + '</b></div>' +
+        '    <div class="nn-sum-hero-cell"><span class="muted">标签数</span><b>' + tagRows.length + '</b></div>' +
+        '  </div>' +
+        '  <h3 class="nn-sum-h">各标签的热度比较 <span class="muted">（Top 5 · 按热度）</span></h3>' +
+        '  <div class="nn-sum-bars">' + (bars || '<p class="muted">暂无标签数据</p>') + '</div>' +
+        '  <h3 class="nn-sum-h">近期各榜单的标签热度趋势 <span class="muted">（每个榜单内标签占比 · 当前快照）</span></h3>' +
+        '  <div class="nn-trend">' + (trendHtml || '<p class="muted">暂无榜单数据</p>') + '</div>' +
+        '  <h3 class="nn-sum-h">完整标签排行 <span class="muted">（按热度倒序）</span></h3>' +
+        '  <div class="nn-sum-table">' +
+            tagRows.map((r, i) =>
+              '<div class="nn-sum-table-row">' +
+              '  <span class="nn-sum-t-no">' + (i + 1) + '</span>' +
+              '  <span class="nn-sum-tag">' + App.escapeHtml(r.tag) + '</span>' +
+              '  <span class="muted">' + r.count + ' 次 · 跨 ' + r.lists.length + ' 个榜</span>' +
+              '  <span class="nn-sum-c">' + App.formatCount(r.score) + '</span>' +
+              '</div>'
+            ).join('') +
+        '  </div>' +
+        '</div>';
+
+      if (nav) {
+        // 在榜单页内部：绑定顶部 tab
+        mainEl.querySelectorAll('.nn-nav-rank-btn').forEach((b) => {
+          b.addEventListener('click', () => {
+            activeRankKey = b.dataset.rank;
+            if (activeRankKey === '__summary') {
+              paintSummary(nav);
+            } else {
+              paintRank();
+            }
+          });
+        });
+      }
     }
 
     // ---------- 全部摘抄 / 全部分析（不分书） ----------
@@ -1121,19 +1363,19 @@ App.registerFeature({
         : '<div class="nn-shelf-empty"><div class="nn-shelf-emoji">' + emoji + '</div>' +
           '<p class="muted">还没有' + label + '。点「📚 我的书」进入任意一本书，添加内容。</p></div>';
 
-      bodyEl.innerHTML =
+      mainEl.innerHTML =
         '<div class="nn-all">' +
         '  <p class="muted nn-all-tip">共 ' + all.length + ' 条' + label + '（按时间倒序，点书名跳到该书）</p>' +
         '  <div class="nn-section-list">' + rows + '</div>' +
         '</div>';
 
-      bodyEl.querySelectorAll('[data-goto]').forEach((el) => {
+      mainEl.querySelectorAll('[data-goto]').forEach((el) => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           view = 'detail'; currentBookId = el.dataset.goto; paint();
         });
       });
-      bodyEl.querySelectorAll('[data-iedit]').forEach((btn) => {
+      mainEl.querySelectorAll('[data-iedit]').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const parts = btn.dataset.iedit.split('|');
@@ -1144,7 +1386,7 @@ App.registerFeature({
           if (it) openItemEditor(b, k, it, paint);
         });
       });
-      bodyEl.querySelectorAll('[data-idel]').forEach((btn) => {
+      mainEl.querySelectorAll('[data-idel]').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const parts = btn.dataset.idel.split('|');
@@ -1169,12 +1411,16 @@ App.registerFeature({
     }
 
     function paint() {
+      // FAB 只在「我的书/详情」下显示（创建新书）
+      fabEl.style.display = (view === 'books' || view === 'detail') ? '' : 'none';
       if (view === 'books') paintBooks();
       else if (view === 'detail') paintDetail();
       else if (view === 'rank') paintRank();
+      else if (view === 'summary') paintSummary();
       else if (view === 'allQuotes') paintAll('quotes', '摘抄', '📑');
       else if (view === 'allAnalyses') paintAll('analyses', '分析', '💡');
     }
+    paintSide();
     paint();
   }
 });

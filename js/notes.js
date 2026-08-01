@@ -1424,8 +1424,7 @@ App.registerFeature({
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
         '  <div class="nn-rank-main">' +
         '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
-          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' +
-            (function () { const p = parseTag(r.tag); return p.scoreLabel ? ' <span class="nn-rank-likes" title="书自带参考数据（点赞量等），不计入热度统计">' + App.escapeHtml(p.scoreLabel) + '</span>' : ''; })()
+          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' + rankMetricBadge(cur.name, r.tag)
           : '') + '</div>' +
         '    <div class="nn-rank-author muted">' + App.escapeHtml(r.a || '') + '</div>' +
         '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
@@ -1504,6 +1503,34 @@ App.registerFeature({
         .map((s) => s.trim())
         .filter((s) => s && !/^\d+(?:\.\d+)?$/.test(s)); // 过滤掉孤立数字
       return { tags, likes, scoreLabel };
+    }
+
+    // 榜单卡片上的「指标徽章」：按榜单类型标注指标含义，避免把点赞量/热度混淆。
+    //   - 推荐榜 / 口碑榜  -> 赞（点赞量）
+    //   - 热度榜          -> 热度
+    //   - 全网热议高分佳作 -> 黑马指数
+    //   - 其它            -> 从 scoreLabel 自带单位推断
+    // 注意：趋势图一律按排位（nnHeatWeight），该徽章数值仅作展示，不计入热度。
+    function rankMetricBadge(listName, tag) {
+      const p = parseTag(tag);
+      const sl = p.scoreLabel;
+      if (!sl) return '';
+      let cat = '';
+      if (listName === '推荐榜' || listName === '口碑榜') cat = '赞';
+      else if (listName === '热度榜') cat = '热度';
+      else if (listName === '全网热议高分佳作') cat = '黑马';
+      else {
+        const m = sl.match(/(赞|热度|收藏|评论|黑马指数|黑马|指数)/);
+        if (m) cat = m[1].indexOf('黑马') >= 0 ? '黑马' : m[1];
+      }
+      const num = sl.replace(/(赞|热度|收藏|评论|书|黑马指数|黑马|指数)\s*$/, '').trim() || sl;
+      const cls = 'nn-rank-metric ' + (cat === '热度' ? 'cat-heat' : cat === '赞' ? 'cat-like' : cat === '黑马' ? 'cat-index' : 'cat-raw');
+      const tip = cat === '热度' ? '热度值（趋势图按排位计算，不采用此数值）'
+        : cat === '赞' ? '点赞量（不计入热度统计）'
+        : cat === '黑马' ? '黑马指数（参考）'
+        : '参考数据（不计入热度）';
+      const text = cat ? (cat + ' ' + num) : num;
+      return ' <span class="' + cls + '" title="' + tip + '">' + App.escapeHtml(text) + '</span>';
     }
 
     // 基于榜单位置计算热度（越大越靠前热度越高）。

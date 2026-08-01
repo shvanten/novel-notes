@@ -1424,7 +1424,9 @@ App.registerFeature({
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
         '  <div class="nn-rank-main">' +
         '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
-          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' : '') + '</div>' +
+          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' +
+            (function () { const p = parseTag(r.tag); return p.scoreLabel ? ' <span class="nn-rank-likes" title="书自带参考数据（点赞量等），不计入热度统计">' + App.escapeHtml(p.scoreLabel) + '</span>' : ''; })()
+          : '') + '</div>' +
         '    <div class="nn-rank-author muted">' + App.escapeHtml(r.a || '') + '</div>' +
         '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
         '  </div>' +

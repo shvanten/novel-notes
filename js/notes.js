@@ -1284,9 +1284,9 @@ App.registerFeature({
         let v = 0;
         (snap.lists || []).forEach((L) => {
           if (HIDDEN_LIST_NAMES.has(L.name)) return;
-          (L.items || []).forEach((it) => {
+          (L.items || []).forEach((it, idx) => {
             const p = parseTag(it.tag);
-            if (p.tags.indexOf(tag) >= 0) v += p.score;
+            if (p.tags.indexOf(tag) >= 0) v += nnHeatWeight(idx + 1, L.items.length);
           });
         });
         return { date: snap.date, value: v };
@@ -1298,8 +1298,8 @@ App.registerFeature({
         let found = false, v = 0;
         (snap.lists || []).forEach((L) => {
           if (HIDDEN_LIST_NAMES.has(L.name)) return;
-          (L.items || []).forEach((it) => {
-            if (it.t === title) { found = true; v = Math.max(v, parseTag(it.tag).score || 0); }
+          (L.items || []).forEach((it, idx) => {
+            if (it.t === title) { found = true; v = Math.max(v, nnHeatWeight(idx + 1, L.items.length)); }
           });
         });
         return { date: snap.date, value: found ? v : null };
@@ -1424,7 +1424,7 @@ App.registerFeature({
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
         '  <div class="nn-rank-main">' +
         '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
-          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(r.tag) + '</span>' : '') + '</div>' +
+          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' : '') + '</div>' +
         '    <div class="nn-rank-author muted">' + App.escapeHtml(r.a || '') + '</div>' +
         '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
         '  </div>' +
@@ -1469,19 +1469,18 @@ App.registerFeature({
     }
 
     // ---------- 总结：标签热度趋势 + 各标签热度比较 ----------
-    // 解析 tag 字段：
-    //   - "言情·警察 · 66.4 万赞"       -> 标签["言情","警察"], 评分 66.4 万赞
-    //   - "93.4 黑马指数 · 言情·青梅竹马" -> 标签["言情","青梅竹马"], 评分 93.4 (黑马指数)
-    //   - "古言·爽文"                    -> 标签["古言","爽文"], 评分 0
-    //   - "古言"                          -> 标签["古言"], 评分 0
-    // 评分单位支持：万/亿/千 + 赞/热度/收藏/评论/书，或独立的"黑马指数/黑马/指数"
-    // 解析失败时 tags=[]，score=0
+    // 解析 tag 字段（仅提取标签名 + 点赞量数字，点赞量不作为热度统计）：
+    //   - "言情·警察 · 66.4 万赞"       -> tags=["言情","警察"], likes=664000, scoreLabel="66.4 万赞"
+    //   - "93.4 黑马指数 · 言情·青梅竹马" -> tags=["言情","青梅竹马"], likes=93.4, scoreLabel="93.4 黑马指数"
+    //   - "古言·爽文"                    -> tags=["古言","爽文"], likes=0
+    //   - "古言"                          -> tags=["古言"], likes=0
+    // 重要：likes 是参考性的点赞/收藏等数字，**不作为热度**。热度只看榜单位置。
     const SCORE_UNIT_RE = /(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/g;
     function parseTag(tag) {
-      if (!tag) return { tags: [], score: 0, scoreLabel: '' };
+      if (!tag) return { tags: [], likes: 0, scoreLabel: '' };
       const txt = String(tag).trim();
-      // 1) 抽评分：累加所有"数字+单位"片段（一个 tag 字段里通常只有一段）
-      let score = 0;
+      // 1) 抽点赞量等参考数字（不做为热度）
+      let likes = 0;
       let scoreLabel = '';
       const m = txt.match(/(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/);
       if (m && m[1]) {
@@ -1490,7 +1489,7 @@ App.registerFeature({
         else if (m[2] === '亿') n *= 100000000;
         else if (m[2] === '千') n *= 1000;
         // 注意："黑马指数" / "黑马" / "指数" 本身不算量级，数字就是原始分
-        score = n;
+        likes = n;
         scoreLabel = m[0].trim();
       }
       // 2) 抽标签：先把所有"数字+(单位)"片段删掉，再按分隔符切
@@ -1502,30 +1501,36 @@ App.registerFeature({
         .split(/\s+/)
         .map((s) => s.trim())
         .filter((s) => s && !/^\d+(?:\.\d+)?$/.test(s)); // 过滤掉孤立数字
-      return { tags, score, scoreLabel };
+      return { tags, likes, scoreLabel };
+    }
+
+    // 基于榜单位置计算热度（越大越靠前热度越高）。
+    // 例：榜单 36 本，第 1 本 → 36；最后一本 → 1；榜单越大权重越高（合理）。
+    function nnHeatWeight(rank, total) {
+      return Math.max(1, (total || 0) - (rank || 0) + 1);
     }
 
     function buildSummary() {
       const lists = rankData.lists || [];
       // 1) 全榜书数
       const totalItems = lists.reduce((s, L) => s + (L.items ? L.items.length : 0), 0);
-      // 2) 全榜总热度分
+      // 2) 全榜总热度分（按榜单位置权重累加，不再累计点赞量）
       let totalScore = 0;
       // 3) 标签维度累计
       const tagCount = {};    // 标签 -> 出现次数
-      const tagScore = {};    // 标签 -> 热度累计
+      const tagScore = {};    // 标签 -> 热度累计（按位置权重）
       const tagLists = {};    // 标签 -> 在哪些榜单出现
       const tagRanks = {};    // 标签 -> [各榜单名次] 用于趋势比较
-      const positionScore = (rank, total) => Math.max(1, total - rank + 1);
       lists.forEach((L) => {
         (L.items || []).forEach((it, i) => {
-          const { tags, score } = parseTag(it.tag);
-          totalScore += score;
+          const { tags, likes } = parseTag(it.tag);  // likes 仅为参考信息
+          const weight = nnHeatWeight(i + 1, L.items.length);
+          totalScore += weight;
           tags.forEach((tg) => {
             tagCount[tg] = (tagCount[tg] || 0) + 1;
-            tagScore[tg] = (tagScore[tg] || 0) + score;
+            tagScore[tg] = (tagScore[tg] || 0) + weight;
             (tagLists[tg] = tagLists[tg] || new Set()).add(L.name);
-            (tagRanks[tg] = tagRanks[tg] || []).push({ list: L.name, rank: i + 1, total: L.items.length, score, weight: positionScore(i + 1, L.items.length) });
+            (tagRanks[tg] = tagRanks[tg] || []).push({ list: L.name, rank: i + 1, total: L.items.length, likes, weight });
           });
         });
       });

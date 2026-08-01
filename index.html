@@ -77,12 +77,16 @@
         <option value="180" selected>近半年（180 天）</option>
         <option value="365">近一年（365 天）</option>
       </select>
+      <label class="nn-sync-auto">
+        <input type="checkbox" id="nn-sync-auto" checked />
+        每次记录后自动静默同步（数据写入公开仓库）
+      </label>
       <div class="nn-sync-btns">
         <button id="nn-sync-up" type="button">⬆ 上传云端</button>
         <button id="nn-sync-down" type="button">⬇ 下载云端</button>
       </div>
       <div class="nn-sync-status" id="nn-sync-status"></div>
-      <div class="nn-sync-note">数据将写入公开仓库 <code>data/nn-user-history.json</code>（含你的收藏与趋势），任何人可见。建议用仅限本仓库、可过期的 token。</div>
+      <div class="nn-sync-note">个人热度趋势历史（nnHistory）与收藏将写入公开仓库 <code>data/nn-user-history.json</code>，作为网站公开资料，任何人可见。建议用仅限本仓库、可过期的 token。</div>
       <button class="nn-sync-close" id="nn-sync-close" type="button">关闭</button>
     </div>
   </div>

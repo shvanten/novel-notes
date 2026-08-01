@@ -1166,6 +1166,7 @@ App.registerFeature({
     }
     function nnSaveFav() {
       try { localStorage.setItem(FAV_KEY, JSON.stringify(nnFavorites)); } catch (e) {}
+      if (window.App && window.App.syncAuto) window.App.syncAuto(); // 收藏变化 → 自动静默同步
     }
     function nnLoadHist() {
       try { nnHistory = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch (e) { nnHistory = []; }
@@ -1173,6 +1174,7 @@ App.registerFeature({
     }
     function nnSaveHist() {
       try { localStorage.setItem(HIST_KEY, JSON.stringify(nnHistory.slice(-HIST_MAX))); } catch (e) {}
+      if (window.App && window.App.syncAuto) window.App.syncAuto(); // 趋势快照变化 → 自动静默同步
     }
     function nnToday() {
       const d = new Date();

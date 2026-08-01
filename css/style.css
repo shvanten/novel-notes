@@ -3071,6 +3071,8 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
 .nn-sync-status.err { color: #d8392b; }
 .nn-sync-note { font-size: 11px; color: var(--muted, #888); line-height: 1.5; }
 .nn-sync-note code { background: var(--surface-2, #f2f2f2); padding: 0 4px; border-radius: 4px; }
+.nn-sync-auto { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text, #333); cursor: pointer; margin: 2px 0; }
+.nn-sync-auto input { width: 16px; height: 16px; accent-color: var(--accent, #6fa860); cursor: pointer; }
 .nn-sync-close {
   align-self: flex-end; background: transparent; border: none;
   color: var(--muted, #888); font-size: 13px; cursor: pointer; padding: 4px 2px;

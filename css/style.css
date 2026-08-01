@@ -3029,3 +3029,50 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
   .nn-line .nn-line-path { animation: none !important; stroke-dashoffset: 0; }
   .nn-modal-mask { animation: none !important; }
 }
+
+/* ============================================================
+   ▸ 云同步面板（追加）：把个人热度趋势历史 + 收藏推到 GitHub
+   ============================================================ */
+.nn-sync-mask {
+  position: fixed; inset: 0; z-index: 1000;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .45); padding: 16px;
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.nn-sync-mask.open { display: flex; }
+.nn-sync {
+  width: 100%; max-width: 420px;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+  display: flex; flex-direction: column; gap: 10px;
+  animation: nn-sync-in .2s ease;
+}
+@keyframes nn-sync-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.nn-sync h3 { margin: 0; font-size: 16px; color: var(--text-strong, #222); }
+.nn-sync label { font-size: 12px; color: var(--muted, #888); }
+.nn-sync input, .nn-sync select {
+  width: 100%; padding: 9px 10px;
+  border: 1px solid var(--border, #ccc); border-radius: 8px;
+  font-size: 14px; background: var(--surface, #fff); color: var(--text-strong, #222);
+  box-sizing: border-box;
+}
+.nn-sync-btns { display: flex; gap: 10px; }
+.nn-sync-btns button {
+  flex: 1; padding: 11px; border-radius: 8px;
+  border: 1px solid var(--border, #ccc);
+  background: var(--accent, #6fa860); color: #fff;
+  font-size: 14px; cursor: pointer; line-height: 1;
+}
+.nn-sync-btns button:active { transform: scale(.97); }
+.nn-sync-status { font-size: 12px; min-height: 16px; color: var(--muted, #888); }
+.nn-sync-status.err { color: #d8392b; }
+.nn-sync-note { font-size: 11px; color: var(--muted, #888); line-height: 1.5; }
+.nn-sync-note code { background: var(--surface-2, #f2f2f2); padding: 0 4px; border-radius: 4px; }
+.nn-sync-close {
+  align-self: flex-end; background: transparent; border: none;
+  color: var(--muted, #888); font-size: 13px; cursor: pointer; padding: 4px 2px;
+}
+

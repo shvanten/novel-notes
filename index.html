@@ -61,8 +61,32 @@
       <h1>📝 小说拆文</h1>
       <button class="top-btn" id="btn-export" type="button">⬇ 导出</button>
       <button class="top-btn" id="btn-import" type="button">⬆ 导入</button>
+      <button class="top-btn" id="btn-sync" type="button">☁ 同步</button>
       <button class="top-btn" id="theme-btn" type="button" aria-label="切换主题">🌙</button>
       <input type="file" id="import-file" accept="application/json,.json" hidden />
+
+  <!-- 云同步面板：把个人热度趋势历史 + 收藏推到 GitHub 公开仓库 -->
+  <div class="nn-sync-mask" id="nn-sync-mask">
+    <div class="nn-sync" role="dialog" aria-modal="true" aria-label="云端同步">
+      <h3>☁ 云端同步（个人趋势）</h3>
+      <label for="nn-sync-token">GitHub Token（仅存本机，不写进代码）</label>
+      <input id="nn-sync-token" type="password" autocomplete="off" placeholder="ghp_xxx 或 fine-grained token（需 repo 写权限）" />
+      <label for="nn-sync-retain">保留时长</label>
+      <select id="nn-sync-retain">
+        <option value="30">近 30 天</option>
+        <option value="180" selected>近半年（180 天）</option>
+        <option value="365">近一年（365 天）</option>
+      </select>
+      <div class="nn-sync-btns">
+        <button id="nn-sync-up" type="button">⬆ 上传云端</button>
+        <button id="nn-sync-down" type="button">⬇ 下载云端</button>
+      </div>
+      <div class="nn-sync-status" id="nn-sync-status"></div>
+      <div class="nn-sync-note">数据将写入公开仓库 <code>data/nn-user-history.json</code>（含你的收藏与趋势），任何人可见。建议用仅限本仓库、可过期的 token。</div>
+      <button class="nn-sync-close" id="nn-sync-close" type="button">关闭</button>
+    </div>
+  </div>
+
     </header>
     <div id="feature"></div>
   </div>

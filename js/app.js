@@ -177,6 +177,95 @@
     reader.readAsText(file);
   }
 
+  // ---------- 云端同步：把个人热度趋势历史(nnHistory)+收藏(nnFavorites)推到 GitHub ----------
+  // 数据写在公开仓库 data/nn-user-history.json；token 仅存本机 localStorage，不进入代码。
+  const GH = { owner: 'shvanten', repo: 'novel-notes', path: 'data/nn-user-history.json' };
+  const TOKEN_KEY = 'nnGhToken';
+  let syncMask = null;
+
+  function ghHeaders(token) {
+    return { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' };
+  }
+  function b64enc(str) { return btoa(unescape(encodeURIComponent(str))); }
+  function b64dec(b64) { return decodeURIComponent(escape(atob(b64.replace(/\s/g, '')))); }
+  function setSyncStatus(msg, isErr) {
+    const el = document.getElementById('nn-sync-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('err', !!isErr);
+  }
+  function openSync() {
+    syncMask = document.getElementById('nn-sync-mask');
+    if (!syncMask) return;
+    const tok = document.getElementById('nn-sync-token');
+    if (tok) tok.value = localStorage.getItem(TOKEN_KEY) || '';
+    setSyncStatus('');
+    syncMask.classList.add('open');
+  }
+  function closeSync() { if (syncMask) syncMask.classList.remove('open'); }
+
+  async function ghGetFile(token) {
+    const r = await fetch('https://api.github.com/repos/' + GH.owner + '/' + GH.repo + '/contents/' + GH.path, { headers: ghHeaders(token) });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('读取失败 ' + r.status);
+    const j = await r.json();
+    return { sha: j.sha || null, data: JSON.parse(b64dec(j.content || '')) };
+  }
+
+  async function uploadCloud() {
+    const tokEl = document.getElementById('nn-sync-token');
+    const retEl = document.getElementById('nn-sync-retain');
+    const token = (tokEl && tokEl.value || '').trim();
+    if (!token) { setSyncStatus('请先填写 GitHub Token', true); return; }
+    localStorage.setItem(TOKEN_KEY, token);
+    const retain = parseInt((retEl && retEl.value) || '180', 10);
+    try {
+      setSyncStatus('正在读取本地趋势…');
+      const all = JSON.parse(localStorage.getItem('nnHistory') || '[]');
+      const cut = new Date(); cut.setDate(cut.getDate() - retain);
+      const keep = Array.isArray(all) ? all.filter((s) => { const d = new Date(s.date); return isNaN(d) || d >= cut; }) : [];
+      const payload = {
+        _kind: 'nn-user-history',
+        updatedAt: new Date().toISOString(),
+        retainDays: retain,
+        history: keep,
+        favorites: JSON.parse(localStorage.getItem('nnFavorites') || '[]')
+      };
+      setSyncStatus('正在上传到 GitHub（保留近 ' + retain + ' 天）…');
+      const cur = await ghGetFile(token); // 拿 sha（若已存在）
+      const body = {
+        message: 'sync: upload nn user history (retain ' + retain + 'd)',
+        content: b64enc(JSON.stringify(payload)),
+        committer: { name: 'novel-notes-sync', email: 'sync@local' }
+      };
+      if (cur && cur.sha) body.sha = cur.sha;
+      const r = await fetch('https://api.github.com/repos/' + GH.owner + '/' + GH.repo + '/contents/' + GH.path, {
+        method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body)
+      });
+      if (!r.ok) { const t = await r.text(); throw new Error('上传失败 ' + r.status + ' ' + t.slice(0, 160)); }
+      setSyncStatus('✅ 已上传云端（保留近 ' + retain + ' 天，共 ' + keep.length + ' 天）');
+      toast('已上传到 GitHub');
+    } catch (e) { console.error(e); setSyncStatus('❌ ' + e.message, true); toast('上传失败'); }
+  }
+
+  async function downloadCloud() {
+    const tokEl = document.getElementById('nn-sync-token');
+    const token = (tokEl && tokEl.value || '').trim();
+    if (!token) { setSyncStatus('请先填写 GitHub Token', true); return; }
+    localStorage.setItem(TOKEN_KEY, token);
+    try {
+      setSyncStatus('正在从 GitHub 下载…');
+      const cur = await ghGetFile(token);
+      if (!cur) throw new Error('云端还没有数据，请先上传');
+      const d = cur.data;
+      if (!d || !Array.isArray(d.history)) throw new Error('数据格式不对');
+      localStorage.setItem('nnHistory', JSON.stringify(d.history));
+      localStorage.setItem('nnFavorites', JSON.stringify(Array.isArray(d.favorites) ? d.favorites : []));
+      setSyncStatus('✅ 已下载，正在刷新…');
+      setTimeout(() => location.reload(), 500);
+    } catch (e) { console.error(e); setSyncStatus('❌ ' + e.message, true); toast('下载失败'); }
+  }
+
   // ---------- 渲染拆文功能 ----------
   function renderFeature(f) {
     if (!rootEl || typeof f.render !== 'function') return;
@@ -211,6 +300,18 @@
         fileEl.value = '';
       });
     }
+
+    // 云同步
+    const syncBtn = document.getElementById('btn-sync');
+    if (syncBtn) syncBtn.addEventListener('click', openSync);
+    const syncClose = document.getElementById('nn-sync-close');
+    if (syncClose) syncClose.addEventListener('click', closeSync);
+    const syncMaskEl = document.getElementById('nn-sync-mask');
+    if (syncMaskEl) syncMaskEl.addEventListener('click', (e) => { if (e.target === syncMaskEl) closeSync(); });
+    const syncUp = document.getElementById('nn-sync-up');
+    if (syncUp) syncUp.addEventListener('click', uploadCloud);
+    const syncDown = document.getElementById('nn-sync-down');
+    if (syncDown) syncDown.addEventListener('click', downloadCloud);
 
     applyTheme(getPreferredTheme());
     features.forEach(renderFeature);

@@ -1122,8 +1122,9 @@ App.registerFeature({
       { t: '死到临头', a: '咸良', tag: '悬疑', d: '作者前作改编电影《恶意》票房 2.54 亿。' },
       { t: '照殿红', a: '盐选热门', tag: '脑洞·短篇', d: '女主手握照殿红四次穿越的时空闭环设定。' },
     ];
-    // 不需要在导航/总结里展示的榜单（黑马指数型/新书型与主榜口径不同，前端过滤即可，不动 rank.json）
-    const HIDDEN_LIST_NAMES = new Set(['全网热议高分佳作', '新书榜']);
+    // 不在「榜单」页展示、也不参与热度聚合的榜单（前端过滤即可，不动 rank.json）。
+    // 说明：全网热议高分佳作已按用户要求加入榜单展示（黑马指数按榜单位置折算热度，与推荐/热度榜口径一致）；仅「新书榜」口径不同，继续隐藏。
+    const HIDDEN_LIST_NAMES = new Set(['新书榜']);
     function filterRankLists(lists) {
       return (lists || []).filter((L) => !HIDDEN_LIST_NAMES.has(L.name));
     }
@@ -1382,7 +1383,7 @@ App.registerFeature({
         '    <button class="nn-modal-x" type="button" aria-label="关闭">×</button></div>' +
         '  ' + nnSegHtml('nn-modal-seg', 'day') +
         '  <div class="nn-line-wrap" id="nn-modal-line"></div>' +
-        '  <div class="nn-modal-meta">仅统计主榜（不含隐藏榜单）· 未在榜的日期按 0 计。' +
+        '  <div class="nn-modal-meta">仅统计主榜（不含「新书榜」）· 未在榜的日期按 0 计。' +
         (nnIsKept(title) ? '该书已收藏，历史将永久保留。' : '收藏或加入书架后，下榜也会保留历史。') +
         '</div>' +
         '</div>';

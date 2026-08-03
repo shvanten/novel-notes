@@ -1465,11 +1465,10 @@ App.registerFeature({
         '<div class="nn-rank-item" data-open="' + App.escapeHtml(r.t) + '" title="点击查看《' + App.escapeHtml(r.t) + '》排名趋势">' +
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
         '  <div class="nn-rank-main">' +
-        '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
-          (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' + rankMetricBadge(cur.name, r.tag)
-          : '') + '</div>' +
-        '    <div class="nn-rank-author muted">' + (r.a ? App.escapeHtml(r.a) : '<span class="nn-no-author">作者未公开</span>') + '</div>' +
-        '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
+      '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
+        (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' + rankMetricBadge(cur.name, r.tag)
+        : '') + '</div>' +
+      '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
         '  </div>' +
         '  <button class="nn-chip sm nn-rank-fav" data-fav="' + App.escapeHtml(r.t) + '" type="button">收藏为书</button>' +
         '</div>'

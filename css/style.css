@@ -1387,7 +1387,6 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
 [data-theme="dark"] .nn-rank-metric.cat-heat  { color: #f0915a; background: rgba(224,104,31,.20); border-color: rgba(224,104,31,.45); }
 [data-theme="dark"] .nn-rank-metric.cat-index { color: #bfa0ec; background: rgba(138,92,196,.20); border-color: rgba(138,92,196,.45); }
 [data-theme="dark"] .nn-rank-metric.cat-raw   { color: #aaa; background: #2a2a2a; border-color: #3a3a3a; }
-.nn-rank-author { font-size: 12px; margin-top: 2px; }
 .nn-rank-desc { font-size: 12.5px; line-height: 1.6; color: var(--text); margin-top: 4px; }
 .nn-rank-fav { align-self: center; white-space: nowrap; }
 

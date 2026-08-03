@@ -1260,7 +1260,8 @@ App.registerFeature({
     // useMax=true 时同一周/月取峰值（单本书的热度），否则求和（标签总热度）
     function nnGroup(rows, mode, useMax) {
       if (mode === 'day') {
-        return rows.map((r) => ({ label: r.date.slice(5), value: r.value == null ? 0 : r.value }));
+        // 保留 null：当天不在榜就不画点/不连线（排名图里 0 会被画到图顶，误导）
+        return rows.map((r) => ({ label: r.date.slice(5), value: r.value }));
       }
       const buckets = {};
       const order = [];
@@ -1327,11 +1328,24 @@ App.registerFeature({
       const Y = (v) => invert
         ? padT + ih * (maxV === minV ? 0 : (v - minV) / (maxV - minV))
         : padT + ih * (1 - v / maxV);
-      const pts = series.map((s, i) => [X(i), Y(s.value)]);
-      const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
-      const area = line +
-        ' L' + pts[n - 1][0].toFixed(1) + ' ' + (padT + ih) +
-        ' L' + pts[0][0].toFixed(1) + ' ' + (padT + ih) + ' Z';
+      // 仅有效点（value != null）参与折线：null（当晚不在榜）处折线断开，不画点与线
+      const valid = series.map((s, i) => ({ i, x: X(i), y: Y(s.value), s })).filter((p) => p.s.value != null);
+      let line = '', area = '';
+      if (valid.length) {
+        let seg = [];
+        const flush = () => {
+          if (seg.length < 2) { seg = []; return; }   // 单点不连线/面积
+          const segLine = seg.map((p, k) => (k ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+          line += (line ? ' ' : '') + segLine;
+          const base = padT + ih;
+          area += 'M' + seg[0].x.toFixed(1) + ' ' + base +
+            ' ' + seg.map((p) => 'L' + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ') +
+            ' L' + seg[seg.length - 1].x.toFixed(1) + ' ' + base + ' Z ';
+          seg = [];
+        };
+        valid.forEach((p, k) => { if (k && p.i !== valid[k - 1].i + 1) flush(); seg.push(p); });
+        flush();
+      }
 
       let grid = '', yt = '';
       const ticks = invert ? rankMax : 4;   // 排名轴：完整画出 1~rankMax 全部排位（顶部1，底部rankMax）
@@ -1341,17 +1355,22 @@ App.registerFeature({
         grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
         yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + fmt(gv) + '</text>';
       }
+      // x 轴：每个数据点都对应其日期标签（日期多时旋转避免重叠）
       let xl = '';
-      const step = Math.max(1, Math.ceil(n / 6));
+      const rotate = n > 10;
+      const xBaseY = H - (rotate ? 4 : 8);
       series.forEach((s, i) => {
-        if (i % step === 0 || i === n - 1) {
-          xl += '<text x="' + X(i).toFixed(1) + '" y="' + (H - 8) + '" class="nn-axis-x">' + App.escapeHtml(s.label) + '</text>';
-        }
+        const x = X(i);
+        const lbl = App.escapeHtml(s.label);
+        xl += rotate
+          ? '<text x="' + x.toFixed(1) + '" y="' + xBaseY + '" class="nn-axis-x" text-anchor="end" transform="rotate(-40 ' + x.toFixed(1) + ' ' + xBaseY + ')">' + lbl + '</text>'
+          : '<text x="' + x.toFixed(1) + '" y="' + xBaseY + '" class="nn-axis-x" text-anchor="middle">' + lbl + '</text>';
       });
+      // 数据点：圆点 cy 精确等于折线经过的 y 坐标（null 不画）
       let dots = '';
-      series.forEach((s, i) => {
-        dots += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(s.value).toFixed(1) + '" r="3" class="nn-dot">' +
-          '<title>' + App.escapeHtml(s.label) + '：' + fmt(s.value) + '</title></circle>';
+      valid.forEach((p) => {
+        dots += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3" class="nn-dot">' +
+          '<title>' + App.escapeHtml(p.s.label) + '：' + fmt(p.s.value) + '</title></circle>';
       });
       return '<svg class="nn-line" viewBox="0 0 ' + W + ' ' + H + '" role="img">' +
         '<defs><linearGradient id="nnGrad" x1="0" y1="0" x2="0" y2="1">' +

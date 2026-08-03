@@ -305,7 +305,7 @@ App.registerFeature({
         '  </div>' +
         '  <div class="nn-book-heat">' +
         '    <div class="nn-book-heat-head">' +
-        '      <span class="nn-book-heat-title">' + App.icon('chart') + ' 热度趋势</span>' +
+        '      <span class="nn-book-heat-title">' + App.icon('chart') + ' 排名趋势</span>' +
         '      ' + nnSegHtml('nn-book-heat-seg', nnBookPeriod) +
         '      <button class="nn-fav-star' + (nnIsKept(b.title) ? ' on' : '') + '" data-fav-star="' + App.escapeHtml(b.title) + '" type="button" title="收藏后即使下榜也永久保留该书的历史数据">' +
                  App.icon('star') + '<span class="nn-fav-star-t">' + (nnIsKept(b.title) ? '已收藏' : '收藏') + '</span></button>' +
@@ -320,7 +320,7 @@ App.registerFeature({
       // 热度趋势卡：周期切换 + 收藏（收藏后下榜也保留历史）
       function paintBookTrend() {
         const el = mainEl.querySelector('#nn-book-line');
-        if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod));
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod), { invert: true, fmt: (v) => '排名 ' + v });
       }
       nnBindSeg(mainEl, 'nn-book-heat-seg', (p) => { nnBookPeriod = p; paintBookTrend(); });
       const favBtn = mainEl.querySelector('[data-fav-star]');
@@ -1295,29 +1295,36 @@ App.registerFeature({
       return nnGroup(rows, mode, false);
     }
     function nnBookSeries(title, mode) {
+      // 返回《书名》在各主榜中的「排名位置」（取最优/最小名次）。1=榜首，数字越大名次越低。
       const rows = nnHistory.map((snap) => {
-        let found = false, v = 0;
+        let found = false, rank = 0;
         (snap.lists || []).forEach((L) => {
           if (HIDDEN_LIST_NAMES.has(L.name)) return;
           (L.items || []).forEach((it, idx) => {
-            if (it.t === title) { found = true; v = Math.max(v, nnHeatWeight(idx + 1, L.items.length)); }
+            if (it.t === title) { const r = idx + 1; if (!found || r < rank) { found = true; rank = r; } }
           });
         });
-        return { date: snap.date, value: found ? v : null };
+        return { date: snap.date, value: found ? rank : null };
       });
       return nnGroup(rows, mode, true);
     }
 
     // ---------- SVG 折线图（面积 + 折线 + 数据点 + 悬浮提示） ----------
-    function nnLineChart(series) {
+    function nnLineChart(series, opts) {
+      const invert = !!(opts && opts.invert);                 // 排名模式：1 在顶部，越大越靠下（名次越低）
+      const fmt = (opts && opts.fmt) || (App.formatCount || ((v) => v));
       if (!series || !series.length) return '<p class="muted nn-line-empty">暂无数据，历史会从每天打开时开始累积。</p>';
       const W = 680, H = 220, padL = 52, padR = 12, padT = 14, padB = 26;
       const iw = W - padL - padR, ih = H - padT - padB;
-      let maxV = 1;
-      series.forEach((s) => { if (s.value > maxV) maxV = s.value; });
+      let minV = invert ? 1 : 0;
+      let maxV = invert ? 1 : 1;
+      series.forEach((s) => { if (s && s.value != null) { if (s.value > maxV) maxV = s.value; if (s.value < minV) minV = s.value; } });
+      if (invert && maxV < minV) maxV = minV;
       const n = series.length;
       const X = (i) => (n <= 1 ? padL + iw / 2 : padL + iw * i / (n - 1));
-      const Y = (v) => padT + ih * (1 - v / maxV);
+      const Y = (v) => invert
+        ? padT + ih * (maxV === minV ? 0 : (v - minV) / (maxV - minV))
+        : padT + ih * (1 - v / maxV);
       const pts = series.map((s, i) => [X(i), Y(s.value)]);
       const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
       const area = line +
@@ -1327,9 +1334,9 @@ App.registerFeature({
       let grid = '', yt = '';
       for (let g = 0; g <= 4; g++) {
         const gy = padT + ih * g / 4;
-        const gv = Math.round(maxV * (1 - g / 4));
+        const gv = invert ? Math.round(minV + (maxV - minV) * g / 4) : Math.round(maxV * (1 - g / 4));
         grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
-        yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + App.formatCount(gv) + '</text>';
+        yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + fmt(gv) + '</text>';
       }
       let xl = '';
       const step = Math.max(1, Math.ceil(n / 6));
@@ -1341,7 +1348,7 @@ App.registerFeature({
       let dots = '';
       series.forEach((s, i) => {
         dots += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(s.value).toFixed(1) + '" r="3" class="nn-dot">' +
-          '<title>' + App.escapeHtml(s.label) + '：' + App.formatCount(s.value) + '</title></circle>';
+          '<title>' + App.escapeHtml(s.label) + '：' + fmt(s.value) + '</title></circle>';
       });
       return '<svg class="nn-line" viewBox="0 0 ' + W + ' ' + H + '" role="img">' +
         '<defs><linearGradient id="nnGrad" x1="0" y1="0" x2="0" y2="1">' +
@@ -1379,7 +1386,7 @@ App.registerFeature({
       overlay.className = 'nn-modal-mask';
       overlay.innerHTML =
         '<div class="nn-modal" role="dialog" aria-modal="true">' +
-        '  <div class="nn-modal-head"><b>《' + App.escapeHtml(title) + '》热度趋势</b>' +
+        '  <div class="nn-modal-head"><b>《' + App.escapeHtml(title) + '》排名趋势</b>' +
         '    <button class="nn-modal-x" type="button" aria-label="关闭">×</button></div>' +
         '  ' + nnSegHtml('nn-modal-seg', 'day') +
         '  <div class="nn-line-wrap" id="nn-modal-line"></div>' +
@@ -1390,7 +1397,7 @@ App.registerFeature({
       document.body.appendChild(overlay);
       const draw = (p) => {
         const el = overlay.querySelector('#nn-modal-line');
-        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p));
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p), { invert: true, fmt: (v) => '排名 ' + v });
       };
       draw('day');
       nnBindSeg(overlay, 'nn-modal-seg', draw);
@@ -1421,7 +1428,7 @@ App.registerFeature({
 
       const cur = lists.find((L) => L.name === activeRankKey) || lists[0] || { name: '榜单', items: [] };
       const listHtml = (cur.items || []).map((r, i) =>
-        '<div class="nn-rank-item" data-open="' + App.escapeHtml(r.t) + '" title="点击查看《' + App.escapeHtml(r.t) + '》热度趋势">' +
+        '<div class="nn-rank-item" data-open="' + App.escapeHtml(r.t) + '" title="点击查看《' + App.escapeHtml(r.t) + '》排名趋势">' +
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
         '  <div class="nn-rank-main">' +
         '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
@@ -1437,7 +1444,7 @@ App.registerFeature({
       mainEl.innerHTML =
         '<div class="nn-rank">' +
         '  <div class="nn-nav-rank" id="nn-nav-rank">' + navHtml + '</div>' +
-        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点条目看热度趋势，点「收藏为书」创建拆文本。</p>' +
+        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点条目看排名趋势，点「收藏为书」创建拆文本。</p>' +
         '  <div class="nn-rank-list">' + listHtml + '</div>' +
         '</div>';
 

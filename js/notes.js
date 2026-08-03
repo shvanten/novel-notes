@@ -1348,12 +1348,24 @@ App.registerFeature({
       }
 
       let grid = '', yt = '';
-      const ticks = invert ? rankMax : 4;   // 排名轴：完整画出 1~rankMax 全部排位（顶部1，底部rankMax）
-      for (let g = 0; g <= ticks; g++) {
-        const gy = padT + ih * g / ticks;
-        const gv = invert ? Math.round(minV + (maxV - minV) * g / ticks) : Math.round(maxV * (1 - g / ticks));
-        grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
-        yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + fmt(gv) + '</text>';
+      if (invert) {
+        // 排名轴：按每个整数排位 1~rankMax 用同一套 Y() 画参考线并标注其排位值，
+        // 这样数据点/折线落在 Y(rank) 时必然精准压在对应参考线上。
+        // （旧写法用 0..rankMax 等分 + 四舍五入标注，导致标注"2"的线其实在 1.889 处，
+        //  与 rank=2 数据点所在的 padT+ih/8 错开，标点对不上线。）
+        for (let r = 1; r <= rankMax; r++) {
+          const gy = Y(r);
+          grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
+          yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + fmt(r) + '</text>';
+        }
+      } else {
+        const ticks = 4;
+        for (let g = 0; g <= ticks; g++) {
+          const gy = padT + ih * g / ticks;
+          const gv = Math.round(maxV * (1 - g / ticks));
+          grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
+          yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + fmt(gv) + '</text>';
+        }
       }
       // x 轴：每个数据点都对应其日期标签（日期多时旋转避免重叠）
       let xl = '';

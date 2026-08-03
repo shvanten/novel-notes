@@ -320,7 +320,7 @@ App.registerFeature({
       // 热度趋势卡：周期切换 + 收藏（收藏后下榜也保留历史）
       function paintBookTrend() {
         const el = mainEl.querySelector('#nn-book-line');
-        if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod), { invert: true, fmt: (v) => '排名 ' + v });
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod), { invert: true, rankMax: 9, fmt: (v) => '排名 ' + v });
       }
       nnBindSeg(mainEl, 'nn-book-heat-seg', (p) => { nnBookPeriod = p; paintBookTrend(); });
       const favBtn = mainEl.querySelector('[data-fav-star]');
@@ -1316,10 +1316,12 @@ App.registerFeature({
       if (!series || !series.length) return '<p class="muted nn-line-empty">暂无数据，历史会从每天打开时开始累积。</p>';
       const W = 680, H = 220, padL = 52, padR = 12, padT = 14, padB = 26;
       const iw = W - padL - padR, ih = H - padT - padB;
-      let minV = invert ? 1 : 0;
-      let maxV = invert ? 1 : 1;
-      series.forEach((s) => { if (s && s.value != null) { if (s.value > maxV) maxV = s.value; if (s.value < minV) minV = s.value; } });
-      if (invert && maxV < minV) maxV = minV;
+      // 排名轴固定 1（榜首，顶部）~ rankMax（末位，底部），把 1~rankMax 所有排位完整画进图里
+      let rankMax = (opts && opts.rankMax) || 9;
+      series.forEach((s) => { if (s && s.value != null && s.value > rankMax) rankMax = s.value; });
+      let minV, maxV;
+      if (invert) { minV = 1; maxV = rankMax; }
+      else { minV = 0; maxV = 1; series.forEach((s) => { if (s && s.value != null && s.value > maxV) maxV = s.value; }); }
       const n = series.length;
       const X = (i) => (n <= 1 ? padL + iw / 2 : padL + iw * i / (n - 1));
       const Y = (v) => invert
@@ -1332,9 +1334,10 @@ App.registerFeature({
         ' L' + pts[0][0].toFixed(1) + ' ' + (padT + ih) + ' Z';
 
       let grid = '', yt = '';
-      for (let g = 0; g <= 4; g++) {
-        const gy = padT + ih * g / 4;
-        const gv = invert ? Math.round(minV + (maxV - minV) * g / 4) : Math.round(maxV * (1 - g / 4));
+      const ticks = invert ? rankMax : 4;   // 排名轴：完整画出 1~rankMax 全部排位（顶部1，底部rankMax）
+      for (let g = 0; g <= ticks; g++) {
+        const gy = padT + ih * g / ticks;
+        const gv = invert ? Math.round(minV + (maxV - minV) * g / ticks) : Math.round(maxV * (1 - g / ticks));
         grid += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '" class="nn-gridline"/>';
         yt += '<text x="' + (padL - 6) + '" y="' + (gy + 4).toFixed(1) + '" class="nn-axis-y">' + fmt(gv) + '</text>';
       }
@@ -1397,7 +1400,7 @@ App.registerFeature({
       document.body.appendChild(overlay);
       const draw = (p) => {
         const el = overlay.querySelector('#nn-modal-line');
-        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p), { invert: true, fmt: (v) => '排名 ' + v });
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p), { invert: true, rankMax: 9, fmt: (v) => '排名 ' + v });
       };
       draw('day');
       nnBindSeg(overlay, 'nn-modal-seg', draw);

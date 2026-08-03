@@ -1468,7 +1468,7 @@ App.registerFeature({
         '    <div class="nn-rank-title">《' + App.escapeHtml(r.t) + '》' +
           (r.tag ? '<span class="nn-rank-tag">' + App.escapeHtml(parseTag(r.tag).tags.join(' · ')) + '</span>' + rankMetricBadge(cur.name, r.tag)
           : '') + '</div>' +
-        '    <div class="nn-rank-author muted">' + App.escapeHtml(r.a || '') + '</div>' +
+        '    <div class="nn-rank-author muted">' + (r.a ? App.escapeHtml(r.a) : '<span class="nn-no-author">作者未公开</span>') + '</div>' +
         '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
         '  </div>' +
         '  <button class="nn-chip sm nn-rank-fav" data-fav="' + App.escapeHtml(r.t) + '" type="button">收藏为书</button>' +

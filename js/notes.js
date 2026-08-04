@@ -5,14 +5,140 @@
  * - 每条 item 支持「文字」+「多页手写」(向量笔触：多色笔 / 荧光笔 / 橡皮擦 / 套索选择 / 撤回还原)
  * - 编辑/添加弹层沾满一页，全屏可写
  * - 顶部 tab：📚 我的拆书 / 📑 全部摘抄 / 💡 全部分析 / 📈 榜单
+ *
+ * 结构说明（便于维护）：
+ *   - 文件整体包在 IIFE 中，避免污染全局命名空间。
+ *   - 「模块级纯函数」位于 render 之外，不依赖运行态（data / view 等），
+ *     只接收参数 + 使用全局 App，可单独阅读 / 测试。
+ *   - render() 内是依赖运行态的视图逻辑（状态、存储、各视图 paint*）。
  */
-App.registerFeature({
-  id: 'notes',
-  title: '拆文',
-  desc: '小说拆文便签',
-  icon: '📝',
-  color: '#b08bbf',
-  render(container) {
+(function () {
+  'use strict';
+
+  // ============================================================
+  //  模块级纯函数（无副作用，不读取 render 闭包里的状态）
+  // ============================================================
+
+  // 新建书时 6 个分析维度所需的空数组；每次返回新对象，避免共享引用
+  function emptyAnalysisFields() {
+    return {
+      titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [],
+      charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [],
+    };
+  }
+
+  function fmtDate(t) {
+    if (!t) return '';
+    const d = new Date(t);
+    const pad = (n) => (n < 10 ? '0' + n : '' + n);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  // 手写缩略图区（列表里展示每页手写的缩略图 / 占位）
+  function drawThumbsHtml(it, key, bookId) {
+    const draws = it.drawings || [];
+    if (!draws.length) return '';
+    return '<div class="nn-item-draws">' + draws.map((d, i) => {
+      const src = d.thumb || d.img || '';
+      return '<div class="nn-draw-thumb" data-vd="' + key + '|' + bookId + '|' + it.id + '|' + i + '">' +
+        (src ? '<img src="' + src + '" alt="手写" />' : '<div class="nn-draw-empty">✍️</div>') +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  // 单条 item 渲染：支持 文字 / 多页手写 / 两者
+  function itemRow(key, it, bookId) {
+    const textHtml = it.text
+      ? '<div class="nn-item-text">' + App.escapeHtml(it.text) + '</div>' : '';
+    const drawHtml = drawThumbsHtml(it, key, bookId);
+    const hasText = !!it.text, hasDraw = (it.drawings || []).length > 0;
+    const tag = (hasText && hasDraw) ? '图文' : (hasDraw ? '手写' : '文字');
+    return '<div class="nn-item">' +
+            '  <div class="nn-item-meta">' +
+            '    <span class="nn-item-tag">' + tag + '</span>' +
+            '    <span class="muted">' + fmtDate(it.createdAt) + '</span>' +
+            '  </div>' +
+              drawHtml + textHtml +
+            '  <div class="nn-item-ops">' +
+            '    <button class="nn-op" data-iedit="' + key + '|' + it.id + '" type="button" aria-label="编辑">✏️</button>' +
+            '    <button class="nn-op" data-idel="' + key + '|' + it.id + '" type="button" aria-label="删除">✕</button>' +
+            '  </div>' +
+            '</div>';
+  }
+
+  // 解析 tag 字段（仅提取标签名 + 点赞量数字，点赞量不作为热度统计）：
+  //   - "言情·警察 · 66.4 万赞"       -> tags=["言情","警察"], likes=664000, scoreLabel="66.4 万赞"
+  //   - "93.4 黑马指数 · 言情·青梅竹马" -> tags=["言情","青梅竹马"], likes=93.4, scoreLabel="93.4 黑马指数"
+  //   - "古言·爽文"                    -> tags=["古言","爽文"], likes=0
+  // 重要：likes 是参考性的点赞/收藏等数字，**不作为热度**。热度只看榜单位置。
+  // RE_SCORE 用于「取首个匹配 + 捕获组」；RE_SCORE_G 用于「全局替换掉数字片段」。
+  const RE_SCORE = /(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/;
+  const RE_SCORE_G = new RegExp(RE_SCORE.source, 'g');
+  function parseTag(tag) {
+    if (!tag) return { tags: [], likes: 0, scoreLabel: '' };
+    const txt = String(tag).trim();
+    // 1) 抽点赞量等参考数字（不做为热度）
+    let likes = 0;
+    let scoreLabel = '';
+    const m = txt.match(RE_SCORE);
+    if (m && m[1]) {
+      let n = parseFloat(m[1]) || 0;
+      if (m[2] === '万') n *= 10000;
+      else if (m[2] === '亿') n *= 100000000;
+      else if (m[2] === '千') n *= 1000;
+      // 注意："黑马指数" / "黑马" / "指数" 本身不算量级，数字就是原始分
+      likes = n;
+      scoreLabel = m[0].trim();
+    }
+    // 2) 抽标签：先把所有"数字+(单位)"片段删掉，再按分隔符切
+    const labelPart = txt
+      .replace(RE_SCORE_G, ' ')
+      .replace(/[·\/、,，]/g, ' ')
+      .trim();
+    const tags = labelPart
+      .split(/\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s && !/^\d+(?:\.\d+)?$/.test(s)); // 过滤掉孤立数字
+    return { tags, likes, scoreLabel };
+  }
+
+  // 榜单卡片上的「指标徽章」：按榜单类型标注指标含义，避免把点赞量/热度混淆。
+  // 趋势图一律按排位（nnHeatWeight），该徽章数值仅作展示，不计入热度。
+  function rankMetricBadge(listName, tag) {
+    const p = parseTag(tag);
+    const sl = p.scoreLabel;
+    if (!sl) return '';
+    let cat = '';
+    if (listName === '推荐榜' || listName === '口碑榜') cat = '赞';
+    else if (listName === '热度榜') cat = '热度';
+    else if (listName === '全网热议高分佳作') cat = '黑马';
+    else {
+      const m = sl.match(/(赞|热度|收藏|评论|黑马指数|黑马|指数)/);
+      if (m) cat = m[1].indexOf('黑马') >= 0 ? '黑马' : m[1];
+    }
+    const num = sl.replace(/(赞|热度|收藏|评论|书|黑马指数|黑马|指数)\s*$/, '').trim() || sl;
+    const cls = 'nn-rank-metric ' + (cat === '热度' ? 'cat-heat' : cat === '赞' ? 'cat-like' : cat === '黑马' ? 'cat-index' : 'cat-raw');
+    const tip = cat === '热度' ? '热度值（趋势图按排位计算，不采用此数值）'
+      : cat === '赞' ? '点赞量（不计入热度统计）'
+      : cat === '黑马' ? '黑马指数（参考）'
+      : '参考数据（不计入热度）';
+    const text = cat ? (cat + ' ' + num) : num;
+    return ' <span class="' + cls + '" title="' + tip + '">' + App.escapeHtml(text) + '</span>';
+  }
+
+  // 基于榜单位置计算热度（越大越靠前热度越高）。
+  // 例：榜单 36 本，第 1 本 → 36；最后一本 → 1；榜单越大权重越高（合理）。
+  function nnHeatWeight(rank, total) {
+    return Math.max(1, (total || 0) - (rank || 0) + 1);
+  }
+
+  App.registerFeature({
+    id: 'notes',
+    title: '拆文',
+    desc: '小说拆文便签',
+    icon: '📝',
+    color: '#b08bbf',
+    render(container) {
     const KEY = 'novelnotes.v1';
 
     // ---------- 7 个 tab 配置 ----------
@@ -92,7 +218,7 @@ App.registerFeature({
           id: n.id || ('q' + Math.random().toString(36).slice(2, 8)),
           text: n.text || '', drawings: [], createdAt: n.createdAt || now,
         }));
-        const empty = { titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [], charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [] };
+        const empty = emptyAnalysisFields();
         return Object.assign({
           id: 'b' + Math.random().toString(36).slice(2, 10),
           title: name || '未命名', type: 'short', emoji: '📕',
@@ -101,7 +227,7 @@ App.registerFeature({
       });
       const orphans = oldNotes.filter((n) => !n.catId);
       if (orphans.length) {
-        const empty = { titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [], charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [] };
+        const empty = emptyAnalysisFields();
         books.push(Object.assign({
           id: 'b' + Math.random().toString(36).slice(2, 10),
           title: '随手记录', type: 'short', emoji: '📓',
@@ -428,37 +554,9 @@ App.registerFeature({
       }
     }
 
-    // 单条 item 渲染：支持 文字 / 多页手写 / 两者
-    function itemRow(key, it, bookId) {
-      const textHtml = it.text
-        ? '<div class="nn-item-text">' + App.escapeHtml(it.text) + '</div>' : '';
-      const drawHtml = drawThumbsHtml(it, key, bookId);
-      const hasText = !!it.text, hasDraw = (it.drawings || []).length > 0;
-      const tag = (hasText && hasDraw) ? '图文' : (hasDraw ? '手写' : '文字');
-      return '<div class="nn-item">' +
-              '  <div class="nn-item-meta">' +
-              '    <span class="nn-item-tag">' + tag + '</span>' +
-              '    <span class="muted">' + fmtDate(it.createdAt) + '</span>' +
-              '  </div>' +
-                drawHtml + textHtml +
-              '  <div class="nn-item-ops">' +
-              '    <button class="nn-op" data-iedit="' + key + '|' + it.id + '" type="button" aria-label="编辑">✏️</button>' +
-              '    <button class="nn-op" data-idel="' + key + '|' + it.id + '" type="button" aria-label="删除">✕</button>' +
-              '  </div>' +
-              '</div>';
-    }
+    // 见文件顶部「模块级纯函数」：itemRow / drawThumbsHtml / fmtDate
 
-    // 手写缩略图区
-    function drawThumbsHtml(it, key, bookId) {
-      const draws = it.drawings || [];
-      if (!draws.length) return '';
-      return '<div class="nn-item-draws">' + draws.map((d, i) => {
-        const src = d.thumb || d.img || '';
-        return '<div class="nn-draw-thumb" data-vd="' + key + '|' + bookId + '|' + it.id + '|' + i + '">' +
-          (src ? '<img src="' + src + '" alt="手写" />' : '<div class="nn-draw-empty">✍️</div>') +
-          '</div>';
-      }).join('') + '</div>';
-    }
+    // 见文件顶部「模块级纯函数」：itemRow / drawThumbsHtml / fmtDate
 
     // 绑定所有「查看手写大图」
     function bindViewers() {
@@ -1096,7 +1194,7 @@ App.registerFeature({
         const t = titleI.value.trim();
         if (!t) { App.toast('请输入书名'); return; }
         if (isNew) {
-          const empty = { titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [], charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [] };
+          const empty = emptyAnalysisFields();
           data.books.push(Object.assign({
             id: uid('b'), title: t, type: curType, emoji: '📕',
             quotes: [], createdAt: Date.now(),
@@ -1226,11 +1324,24 @@ App.registerFeature({
       if (nnHistLoading) return;               // 归档还在拉，回来后会统一 apply
       nnLoadHist(); nnLoadFav();
       if (nnHistory.length) { nnHistReady = true; nnApplySnapshot(); return; }
-      // 首次运行：用仓库里的全局归档做基线，让趋势图一上来就有数据
+      // 首次运行：用仓库里的历史归档做基线，让趋势图一上来就有数据。
+      // 归档已从单个大文件拆成「清单 data/rank-history.json（日期数组）+ 每日文件 data/rank-history/<date>.json」。
+      // 先拉清单，再并行拉取每一天，合并成 {date, lists} 快照数组。
       nnHistLoading = true;
       fetch('data/rank-history.json', { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => { if (Array.isArray(j) && j.length) nnHistory = j.slice(-HIST_MAX); })
+        .then((dates) => {
+          if (!Array.isArray(dates) || !dates.length) return [];
+          return Promise.all(dates.map((d) =>
+            fetch('data/rank-history/' + d + '.json', { cache: 'no-store' })
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+          ));
+        })
+        .then((snaps) => {
+          const valid = (Array.isArray(snaps) ? snaps : []).filter((s) => s && s.date && Array.isArray(s.lists));
+          if (valid.length) nnHistory = valid.slice(-HIST_MAX);
+        })
         .catch(() => {})
         .then(() => {
           nnHistLoading = false;
@@ -1498,7 +1609,7 @@ App.registerFeature({
         b.addEventListener('click', (e) => {
           e.stopPropagation(); // 别冒泡到条目，否则会同时弹出趋势图
           const name = b.dataset.fav;
-          const empty = { titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [], charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [] };
+          const empty = emptyAnalysisFields();
           data.books.push(Object.assign({
             id: uid('b'), title: name, type: 'short', emoji: '📕',
             quotes: [], createdAt: Date.now(),
@@ -1517,68 +1628,11 @@ App.registerFeature({
     //   - "古言·爽文"                    -> tags=["古言","爽文"], likes=0
     //   - "古言"                          -> tags=["古言"], likes=0
     // 重要：likes 是参考性的点赞/收藏等数字，**不作为热度**。热度只看榜单位置。
-    const SCORE_UNIT_RE = /(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/g;
-    function parseTag(tag) {
-      if (!tag) return { tags: [], likes: 0, scoreLabel: '' };
-      const txt = String(tag).trim();
-      // 1) 抽点赞量等参考数字（不做为热度）
-      let likes = 0;
-      let scoreLabel = '';
-      const m = txt.match(/(\d+(?:\.\d+)?)\s*(万|亿|千)?\s*(赞|热度|收藏|评论|书|黑马指数|黑马|指数)?/);
-      if (m && m[1]) {
-        let n = parseFloat(m[1]) || 0;
-        if (m[2] === '万') n *= 10000;
-        else if (m[2] === '亿') n *= 100000000;
-        else if (m[2] === '千') n *= 1000;
-        // 注意："黑马指数" / "黑马" / "指数" 本身不算量级，数字就是原始分
-        likes = n;
-        scoreLabel = m[0].trim();
-      }
-      // 2) 抽标签：先把所有"数字+(单位)"片段删掉，再按分隔符切
-      const labelPart = txt
-        .replace(SCORE_UNIT_RE, ' ')
-        .replace(/[·\/、,，]/g, ' ')
-        .trim();
-      const tags = labelPart
-        .split(/\s+/)
-        .map((s) => s.trim())
-        .filter((s) => s && !/^\d+(?:\.\d+)?$/.test(s)); // 过滤掉孤立数字
-      return { tags, likes, scoreLabel };
-    }
+    // 见文件顶部「模块级纯函数」：parseTag（RE_SCORE / RE_SCORE_G）
 
-    // 榜单卡片上的「指标徽章」：按榜单类型标注指标含义，避免把点赞量/热度混淆。
-    //   - 推荐榜 / 口碑榜  -> 赞（点赞量）
-    //   - 热度榜          -> 热度
-    //   - 全网热议高分佳作 -> 黑马指数
-    //   - 其它            -> 从 scoreLabel 自带单位推断
-    // 注意：趋势图一律按排位（nnHeatWeight），该徽章数值仅作展示，不计入热度。
-    function rankMetricBadge(listName, tag) {
-      const p = parseTag(tag);
-      const sl = p.scoreLabel;
-      if (!sl) return '';
-      let cat = '';
-      if (listName === '推荐榜' || listName === '口碑榜') cat = '赞';
-      else if (listName === '热度榜') cat = '热度';
-      else if (listName === '全网热议高分佳作') cat = '黑马';
-      else {
-        const m = sl.match(/(赞|热度|收藏|评论|黑马指数|黑马|指数)/);
-        if (m) cat = m[1].indexOf('黑马') >= 0 ? '黑马' : m[1];
-      }
-      const num = sl.replace(/(赞|热度|收藏|评论|书|黑马指数|黑马|指数)\s*$/, '').trim() || sl;
-      const cls = 'nn-rank-metric ' + (cat === '热度' ? 'cat-heat' : cat === '赞' ? 'cat-like' : cat === '黑马' ? 'cat-index' : 'cat-raw');
-      const tip = cat === '热度' ? '热度值（趋势图按排位计算，不采用此数值）'
-        : cat === '赞' ? '点赞量（不计入热度统计）'
-        : cat === '黑马' ? '黑马指数（参考）'
-        : '参考数据（不计入热度）';
-      const text = cat ? (cat + ' ' + num) : num;
-      return ' <span class="' + cls + '" title="' + tip + '">' + App.escapeHtml(text) + '</span>';
-    }
+    // 见文件顶部「模块级纯函数」：rankMetricBadge
 
-    // 基于榜单位置计算热度（越大越靠前热度越高）。
-    // 例：榜单 36 本，第 1 本 → 36；最后一本 → 1；榜单越大权重越高（合理）。
-    function nnHeatWeight(rank, total) {
-      return Math.max(1, (total || 0) - (rank || 0) + 1);
-    }
+    // 见文件顶部「模块级纯函数」：nnHeatWeight
 
     function buildSummary() {
       const lists = rankData.lists || [];
@@ -1800,12 +1854,7 @@ App.registerFeature({
       bindViewers();
     }
 
-    function fmtDate(t) {
-      if (!t) return '';
-      const d = new Date(t);
-      const pad = (n) => (n < 10 ? '0' + n : '' + n);
-      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-    }
+    // 见文件顶部「模块级纯函数」：fmtDate
 
     function paint() {
       // FAB 只在「我的书/详情」下显示（创建新书）
@@ -1821,3 +1870,5 @@ App.registerFeature({
     paint();
   }
 });
+
+})();

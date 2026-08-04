@@ -1,7 +1,12 @@
 /**
  * 小说拆文 · 独立网页的最小框架
- * 只提供拆文功能需要的 App API（registerFeature / escapeHtml / toast / confirm / prompt）、
- * 主题切换，以及「导出 / 导入 JSON」数据迁移。不含任何同步逻辑。
+ * ------------------------------------------------------------
+ * 只负责「框架能力」，不含任何业务 / 同步逻辑：
+ *   - App API：registerFeature / escapeHtml / toast / confirm / prompt / formatCount / icon
+ *   - 主题切换（light / dark，记忆偏好）
+ *   - 导出 / 导入 JSON（全量备份整个本地数据）
+ *   - Service Worker 注册（PWA 离线）
+ * 云端同步逻辑已拆到 js/sync.js（独立模块，挂在 window.App.syncAuto / pushCloud）。
  */
 (function () {
   'use strict';
@@ -177,128 +182,6 @@
     reader.readAsText(file);
   }
 
-  // ---------- 云端同步：把个人热度趋势历史(nnHistory)+收藏(nnFavorites)推到 GitHub ----------
-  // 数据写在公开仓库 data/nn-user-history.json；token 仅存本机 localStorage，不进入代码。
-  const GH = { owner: 'shvanten', repo: 'novel-notes', path: 'data/nn-user-history.json' };
-  const TOKEN_KEY = 'nnGhToken';
-  const RETAIN_KEY = 'nnSyncRetain';     // 自动同步使用的保留时长偏好
-  const AUTOSYNC_KEY = 'nnAutoSync';     // '0' 表示关闭自动同步，其余均为开启
-  let syncMask = null;
-  let syncTimer = null;                  // 自动静默同步的防抖定时器
-  let syncBusy = false;                  // 防止并发 PUT 冲突（409）
-
-  function getSyncToken() { return (localStorage.getItem(TOKEN_KEY) || '').trim(); }
-  function getRetainDays() { const v = parseInt(localStorage.getItem(RETAIN_KEY) || '180', 10); return [30, 180, 365].indexOf(v) >= 0 ? v : 180; }
-  function getAutoSync() { return localStorage.getItem(AUTOSYNC_KEY) !== '0'; } // 默认开启
-
-  function ghHeaders(token) {
-    return { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' };
-  }
-  function b64enc(str) { return btoa(unescape(encodeURIComponent(str))); }
-  function b64dec(b64) { return decodeURIComponent(escape(atob(b64.replace(/\s/g, '')))); }
-  function setSyncStatus(msg, isErr) {
-    const el = document.getElementById('nn-sync-status');
-    if (!el) return;
-    el.textContent = msg || '';
-    el.classList.toggle('err', !!isErr);
-  }
-  function openSync() {
-    syncMask = document.getElementById('nn-sync-mask');
-    if (!syncMask) return;
-    const tok = document.getElementById('nn-sync-token');
-    if (tok) tok.value = localStorage.getItem(TOKEN_KEY) || '';
-    setSyncStatus('');
-    syncMask.classList.add('open');
-  }
-  function closeSync() { if (syncMask) syncMask.classList.remove('open'); }
-
-  async function ghGetFile(token) {
-    const r = await fetch('https://api.github.com/repos/' + GH.owner + '/' + GH.repo + '/contents/' + GH.path, { headers: ghHeaders(token) });
-    if (r.status === 404) return null;
-    if (!r.ok) throw new Error('读取失败 ' + r.status);
-    const j = await r.json();
-    return { sha: j.sha || null, data: JSON.parse(b64dec(j.content || '')) };
-  }
-
-  // 核心上传：给定 token + 保留天数，把本地 nnHistory + 收藏推到 GitHub。
-  // silent=true 时完全静默（不打 toast、不写面板状态），仅在 console 记录。
-  async function pushCloud(token, retain, silent) {
-    if (syncBusy) return;              // 上一个 PUT 还在进行，跳过本次避免 409
-    try {
-      syncBusy = true;
-      const all = JSON.parse(localStorage.getItem('nnHistory') || '[]');
-      const cut = new Date(); cut.setDate(cut.getDate() - retain);
-      const keep = Array.isArray(all) ? all.filter((s) => { const d = new Date(s.date); return isNaN(d) || d >= cut; }) : [];
-      const payload = {
-        _kind: 'nn-user-history',
-        updatedAt: new Date().toISOString(),
-        retainDays: retain,
-        history: keep,                       // 个人热度趋势历史（公开资料）
-        favorites: JSON.parse(localStorage.getItem('nnFavorites') || '[]')
-      };
-      const cur = await ghGetFile(token);    // 拿 sha（若文件已存在）
-      const body = {
-        message: 'sync: upload nn user history (retain ' + retain + 'd)',
-        content: b64enc(JSON.stringify(payload)),
-        committer: { name: 'novel-notes-sync', email: 'sync@local' }
-      };
-      if (cur && cur.sha) body.sha = cur.sha;
-      const r = await fetch('https://api.github.com/repos/' + GH.owner + '/' + GH.repo + '/contents/' + GH.path, {
-        method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body)
-      });
-      if (!r.ok) { const t = await r.text(); throw new Error('上传失败 ' + r.status + ' ' + t.slice(0, 160)); }
-      if (silent) console.log('[sync] 自动静默同步完成，已上传 ' + keep.length + ' 天趋势');
-      else { setSyncStatus('✅ 已上传云端（保留近 ' + retain + ' 天，共 ' + keep.length + ' 天）'); toast('已上传到 GitHub'); }
-    } catch (e) {
-      console.error('[sync] 同步失败：', e);
-      if (!silent) { setSyncStatus('❌ ' + e.message, true); toast('上传失败'); }
-    } finally {
-      syncBusy = false;
-    }
-  }
-
-  // 手动上传：读取面板里的 token 与保留时长
-  async function uploadCloud() {
-    const tokEl = document.getElementById('nn-sync-token');
-    const retEl = document.getElementById('nn-sync-retain');
-    const token = (tokEl && tokEl.value || '').trim();
-    if (!token) { setSyncStatus('请先填写 GitHub Token', true); return; }
-    localStorage.setItem(TOKEN_KEY, token);
-    const retain = parseInt((retEl && retEl.value) || '180', 10);
-    localStorage.setItem(RETAIN_KEY, String(retain));
-    setSyncStatus('正在上传到 GitHub（保留近 ' + retain + ' 天）…');
-    await pushCloud(token, retain, false);
-  }
-
-  // 自动静默同步：每次本地 nnHistory / 收藏变化后调用。
-  // 仅当已填写 token 且未关闭自动同步时触发；防抖 2.5s，避免高频写入 GitHub。
-  function syncAuto() {
-    if (!getAutoSync()) return;
-    if (!navigator.onLine) return;
-    const token = getSyncToken();
-    if (!token) return;
-    if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => { syncTimer = null; pushCloud(token, getRetainDays(), true); }, 2500);
-  }
-
-  async function downloadCloud() {
-    const tokEl = document.getElementById('nn-sync-token');
-    const token = (tokEl && tokEl.value || '').trim();
-    if (!token) { setSyncStatus('请先填写 GitHub Token', true); return; }
-    localStorage.setItem(TOKEN_KEY, token);
-    try {
-      setSyncStatus('正在从 GitHub 下载…');
-      const cur = await ghGetFile(token);
-      if (!cur) throw new Error('云端还没有数据，请先上传');
-      const d = cur.data;
-      if (!d || !Array.isArray(d.history)) throw new Error('数据格式不对');
-      localStorage.setItem('nnHistory', JSON.stringify(d.history));
-      localStorage.setItem('nnFavorites', JSON.stringify(Array.isArray(d.favorites) ? d.favorites : []));
-      setSyncStatus('✅ 已下载，正在刷新…');
-      setTimeout(() => location.reload(), 500);
-    } catch (e) { console.error(e); setSyncStatus('❌ ' + e.message, true); toast('下载失败'); }
-  }
-
   // ---------- 渲染拆文功能 ----------
   function renderFeature(f) {
     if (!rootEl || typeof f.render !== 'function') return;
@@ -334,31 +217,6 @@
       });
     }
 
-    // 云同步
-    const syncBtn = document.getElementById('btn-sync');
-    if (syncBtn) syncBtn.addEventListener('click', openSync);
-    const syncClose = document.getElementById('nn-sync-close');
-    if (syncClose) syncClose.addEventListener('click', closeSync);
-    const syncMaskEl = document.getElementById('nn-sync-mask');
-    if (syncMaskEl) syncMaskEl.addEventListener('click', (e) => { if (e.target === syncMaskEl) closeSync(); });
-    const syncUp = document.getElementById('nn-sync-up');
-    if (syncUp) syncUp.addEventListener('click', uploadCloud);
-    const syncDown = document.getElementById('nn-sync-down');
-    if (syncDown) syncDown.addEventListener('click', downloadCloud);
-
-    // 保留时长：变化时记住偏好（自动同步也会沿用）
-    const retainSel = document.getElementById('nn-sync-retain');
-    if (retainSel) {
-      retainSel.value = String(getRetainDays());
-      retainSel.addEventListener('change', () => localStorage.setItem(RETAIN_KEY, retainSel.value));
-    }
-    // 自动静默同步开关
-    const autoEl = document.getElementById('nn-sync-auto');
-    if (autoEl) {
-      autoEl.checked = getAutoSync();
-      autoEl.addEventListener('change', () => localStorage.setItem(AUTOSYNC_KEY, autoEl.checked ? '1' : '0'));
-    }
-
     applyTheme(getPreferredTheme());
     features.forEach(renderFeature);
   }
@@ -366,7 +224,7 @@
   const api = {
     registerFeature, navigate: function () {}, getFeatures: () => features,
     toast, escapeHtml, formatCount, confirm: confirmDialog, prompt: promptDialog, closeModal,
-    exportData, importData, syncAuto, pushCloud,
+    exportData, importData,
     icon: function (name, cls) {
       return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#ic-' + name + '"/></svg>';
     },

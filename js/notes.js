@@ -1,12 +1,16 @@
 /**
- * 小说拆文：
- * - 自己创建「书」(长篇 / 短篇)
- * - 每本书 7 个 tab：标题分析 / 导语分析 / 核心梗分析 / 人设分析 / 付费节点分析 / 摘抄 / 其他分析
+ * 通用笔记（模板化）：
+ * - 自己创建笔记本，类型由 TEMPLATES 决定（拆文 / 读书学习 / 会议工作 / 日记随想 / 项目待办…）
+ * - 每本笔记本按模板有若干「分区」(tab)，分区内容 = 文字 + 多页手写条目
  * - 每条 item 支持「文字」+「多页手写」(向量笔触：多色笔 / 荧光笔 / 橡皮擦 / 套索选择 / 撤回还原)
  * - 编辑/添加弹层沾满一页，全屏可写
- * - 顶部 tab：📚 我的拆书 / 📑 全部摘抄 / 💡 全部分析 / 📈 榜单
+ * - 顶部模板切换器 + 侧栏导航（书架 / 聚合视图 / 仅拆文有「榜单」）
  *
  * 结构说明（便于维护）：
+ *   - TEMPLATES（文件顶部模块级）是「模板注册表」：每种笔记类型一份配置，
+ *     决定书类型(types) / 分区(sections) / 侧栏导航(nav) / 是否带榜单(hasRank) / 空结构(emptyBook)。
+ *   - 引擎只认「笔记本 -> 分区 -> 条目」，不写死任何小说专属逻辑（除拆文模板本身）。
+ *   - 新增一种笔记类型只需在 TEMPLATES 加一份配置，前端无需其它改动。
  *   - 文件整体包在 IIFE 中，避免污染全局命名空间。
  *   - 「模块级纯函数」位于 render 之外，不依赖运行态（data / view 等），
  *     只接收参数 + 使用全局 App，可单独阅读 / 测试。
@@ -19,13 +23,100 @@
   //  模块级纯函数（无副作用，不读取 render 闭包里的状态）
   // ============================================================
 
-  // 新建书时 6 个分析维度所需的空数组；每次返回新对象，避免共享引用
-  function emptyAnalysisFields() {
-    return {
-      titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [],
-      charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [],
-    };
-  }
+  // ============================================================
+  //  模板注册表：每种笔记类型 = 一份模板
+  //  引擎只认「笔记本 -> 分区 -> 条目」，模板决定分区的字段 / 聚合 / 图标。
+  //  拆文只是其中一个模板，新增类型只需在 TEMPLATES 加一份配置。
+  // ============================================================
+  const TEMPLATES = {
+    novel: {
+      label: '拆文', icon: 'book', defaultEmoji: '📕', hasRank: true,
+      types: [
+        { key: 'long', label: '长篇', icon: 'book' },
+        { key: 'short', label: '短篇', icon: 'note' },
+      ],
+      sections: [
+        { key: 'title',    short: '标题',     full: '标题分析',     field: 'titleAnalysis',    kind: 'analysis' },
+        { key: 'tagline',  short: '导语',     full: '导语分析',     field: 'taglineAnalysis',  kind: 'analysis' },
+        { key: 'hook',     short: '核心梗',   full: '核心梗分析',   field: 'hookAnalysis',     kind: 'analysis' },
+        { key: 'chars',    short: '人设',     full: '人设分析',     field: 'charsAnalysis',    kind: 'analysis' },
+        { key: 'payNode',  short: '付费节点', full: '付费节点分析', field: 'payNodeAnalysis',  kind: 'analysis' },
+        { key: 'quotes',   short: '摘抄',     full: '摘抄',         field: 'quotes',           kind: 'quote' },
+        { key: 'other',    short: '其他',     full: '其他分析',     field: 'otherAnalysis',    kind: 'analysis' },
+      ],
+      nav: {
+        shelf: '我的拆书',
+        all: [
+          { view: 'allQuotes',   label: '全部摘抄', icon: 'doc',  kind: 'quotes' },
+          { view: 'allAnalyses', label: '全部分析', icon: 'bulb', kind: 'analyses' },
+        ],
+      },
+      emptyBook() {
+        return {
+          titleAnalysis: [], taglineAnalysis: [], hookAnalysis: [],
+          charsAnalysis: [], payNodeAnalysis: [], otherAnalysis: [],
+          quotes: [],
+        };
+      },
+    },
+    study: {
+      label: '读书学习', icon: 'doc', defaultEmoji: '📘', hasRank: false,
+      types: [],
+      sections: [
+        { key: 'excerpt',    short: '摘录', full: '摘录', field: 'excerptAnalysis',   kind: 'quote' },
+        { key: 'reflection', short: '感想', full: '感想', field: 'reflectionAnalysis', kind: 'analysis' },
+        { key: 'annotation', short: '批注', full: '批注', field: 'annotationAnalysis', kind: 'analysis' },
+      ],
+      nav: {
+        shelf: '我的书',
+        all: [{ view: 'allExcerpts', label: '全部摘录', icon: 'doc', kind: 'quotes' }],
+      },
+      emptyBook() { return { excerptAnalysis: [], reflectionAnalysis: [], annotationAnalysis: [] }; },
+    },
+    meeting: {
+      label: '会议工作', icon: 'chat', defaultEmoji: '📒', hasRank: false,
+      types: [],
+      sections: [
+        { key: 'agenda', short: '议程', full: '议程', field: 'agendaAnalysis', kind: 'analysis' },
+        { key: 'points', short: '要点', full: '要点', field: 'pointsAnalysis', kind: 'analysis' },
+        { key: 'todos',  short: '待办', full: '待办', field: 'todosAnalysis',  kind: 'analysis' },
+      ],
+      nav: {
+        shelf: '我的会议',
+        all: [{ view: 'allPoints', label: '全部要点', icon: 'bulb', kind: 'analyses' }],
+      },
+      emptyBook() { return { agendaAnalysis: [], pointsAnalysis: [], todosAnalysis: [] }; },
+    },
+    journal: {
+      label: '日记随想', icon: 'leaf', defaultEmoji: '📔', hasRank: false,
+      types: [],
+      sections: [
+        { key: 'body', short: '正文', full: '正文', field: 'bodyAnalysis', kind: 'note' },
+      ],
+      nav: { shelf: '我的日记', all: [] },
+      emptyBook() { return { bodyAnalysis: [] }; },
+    },
+    todo: {
+      label: '项目待办', icon: 'tag', defaultEmoji: '📋', hasRank: false,
+      types: [],
+      sections: [
+        { key: 'doing', short: '进行中', full: '进行中', field: 'doingAnalysis', kind: 'analysis' },
+        { key: 'done',  short: '已完成', full: '已完成', field: 'doneAnalysis',  kind: 'analysis' },
+      ],
+      nav: {
+        shelf: '我的清单',
+        all: [{ view: 'allTasks', label: '全部任务', icon: 'tag', kind: 'analyses' }],
+      },
+      emptyBook() { return { doingAnalysis: [], doneAnalysis: [] }; },
+    },
+  };
+
+  // 取书所用模板（缺省视为拆文，兼容旧数据）
+  function bookTemplate(b) { return TEMPLATES[(b && b.template) || 'novel'] || TEMPLATES.novel; }
+  // 书的分区列表（数据驱动，替代写死的 TABS）
+  function bookSections(b) { return bookTemplate(b).sections; }
+  // 旧别名：拆文空结构（收藏为书等场景仍用）
+  function emptyAnalysisFields() { return TEMPLATES.novel.emptyBook(); }
 
   function fmtDate(t) {
     if (!t) return '';
@@ -134,27 +225,39 @@
 
   App.registerFeature({
     id: 'notes',
-    title: '拆文',
-    desc: '小说拆文便签',
+    title: '笔记',
+    desc: '通用笔记：拆文 / 读书 / 会议 / 日记 / 待办',
     icon: '📝',
     color: '#b08bbf',
     render(container) {
     const KEY = 'novelnotes.v1';
 
-    // ---------- 7 个 tab 配置 ----------
-    const TABS = [
-      { key: 'title',    short: '标题',     full: '标题分析',     field: 'titleAnalysis' },
-      { key: 'tagline',  short: '导语',     full: '导语分析',     field: 'taglineAnalysis' },
-      { key: 'hook',     short: '核心梗',   full: '核心梗分析',   field: 'hookAnalysis' },
-      { key: 'chars',    short: '人设',     full: '人设分析',     field: 'charsAnalysis' },
-      { key: 'payNode',  short: '付费节点', full: '付费节点分析', field: 'payNodeAnalysis' },
-      { key: 'quotes',   short: '摘抄',     full: '摘抄',         field: 'quotes' },
-      { key: 'other',    short: '其他',     full: '其他分析',     field: 'otherAnalysis' },
-    ];
-    const FIELDS = TABS.map((t) => t.field);
-    const fieldOf = (k) => (TABS.find((t) => t.key === k) || {}).field;
-    const labelOf = (k) => (TABS.find((t) => t.key === k) || {}).full || k;
-    const fullList = TABS.map((t) => t.full).join('/');
+    // ---------- 当前模板 / 分区（数据驱动，替代写死的 TABS） ----------
+    const TP_KEY = 'nnActiveTemplate';
+    function activeTemplateId0() {
+      try { return localStorage.getItem(TP_KEY) || 'novel'; } catch (e) { return 'novel'; }
+    }
+    let activeTemplateId = activeTemplateId0();
+    function activeTemplate() { return TEMPLATES[activeTemplateId] || TEMPLATES.novel; }
+    function isAllView(v) {
+      const all = (activeTemplate().nav && activeTemplate().nav.all) || [];
+      return all.some((a) => a.view === v);
+    }
+    function fieldOf(key, book) {
+      const sec = bookSections(book).find((t) => t.key === key) || {};
+      return sec.field || key;
+    }
+    function labelOf(key, book) {
+      const sec = bookSections(book).find((t) => t.key === key) || {};
+      return sec.full || key;
+    }
+    // 书类型徽章（无 types 的模板返回空字符串）
+    function typeBadgeHtml(b) {
+      const tpl = bookTemplate(b);
+      if (!tpl.types || !tpl.types.length) return '';
+      const t = tpl.types.find((x) => x.key === b.type) || tpl.types[0];
+      return '<span class="nn-book-type nn-book-type-' + t.key + '">' + App.icon(t.icon || 'note') + ' ' + t.label + '</span>';
+    }
 
     // ---------- 存储 ----------
     // book = { id, title, type, emoji,
@@ -162,9 +265,14 @@
     //   payNodeAnalysis, otherAnalysis, quotes: [ {id,text,drawings:[{id,strokes,thumb,img}],createdAt} ],
     //   createdAt }
     function ensureArrays(b) {
-      FIELDS.forEach((f) => { b[f] = Array.isArray(b[f]) ? b[f] : []; });
-      b.type = (b.type === 'long' || b.type === 'short') ? b.type : 'short';
-      b.emoji = b.emoji || '📕';
+      bookSections(b).forEach((s) => { b[s.field] = Array.isArray(b[s.field]) ? b[s.field] : []; });
+      const tpl = bookTemplate(b);
+      if (tpl.types && tpl.types.length) {
+        b.type = tpl.types.some((t) => t.key === b.type) ? b.type : tpl.types[0].key;
+      } else {
+        delete b.type;
+      }
+      b.emoji = b.emoji || tpl.defaultEmoji || '📕';
     }
     // 单条 item：旧 {text,img} -> {text,drawings}
     function migrateItem(it) {
@@ -188,9 +296,12 @@
       if (!old || typeof old !== 'object') return { books: [] };
       if (Array.isArray(old.books)) {
         old.books.forEach((b) => {
+          b.template = b.template || 'novel';
+          const tpl = bookTemplate(b);
           const wrap = (s) => s && String(s).trim()
             ? [{ id: 'm' + Math.random().toString(36).slice(2, 8), text: String(s), drawings: [], createdAt: Date.now() }]
             : [];
+          // 旧字段兼容（仅拆文相关）；其它模板无这些旧字段，原样补齐分区即可
           b.titleAnalysis   = b.titleAnalysis   || [];
           b.taglineAnalysis = b.taglineAnalysis || wrap(b.tagline);
           b.hookAnalysis    = b.hookAnalysis    || wrap(b.hook);
@@ -200,13 +311,14 @@
             ? b.analyses.map((a) => ({ id: a.id || ('m' + Math.random().toString(36).slice(2, 8)), text: a.text || '', drawings: [], createdAt: a.createdAt || Date.now() }))
             : []);
           b.quotes          = Array.isArray(b.quotes) ? b.quotes : [];
-          FIELDS.forEach((f) => { b[f] = (b[f] || []).map(migrateItem); });
           delete b.tagline; delete b.hook; delete b.chars; delete b.analyses;
+          // 补齐当前模板所有分区字段并迁移每条 item
+          tpl.sections.forEach((s) => { b[s.field] = (b[s.field] || []).map(migrateItem); });
           ensureArrays(b);
         });
         return old;
       }
-      // 极旧的 {cats,types,notes} 结构
+      // 极旧的 {cats,types,notes} 结构 -> 统一视为拆文
       const oldCats = Array.isArray(old.cats) ? old.cats : [];
       const oldNotes = Array.isArray(old.notes) ? old.notes : [];
       const now = Date.now();
@@ -221,7 +333,7 @@
         const empty = emptyAnalysisFields();
         return Object.assign({
           id: 'b' + Math.random().toString(36).slice(2, 10),
-          title: name || '未命名', type: 'short', emoji: '📕',
+          title: name || '未命名', template: 'novel', type: 'short', emoji: '📕',
           quotes: qs, createdAt: now,
         }, empty);
       });
@@ -230,7 +342,7 @@
         const empty = emptyAnalysisFields();
         books.push(Object.assign({
           id: 'b' + Math.random().toString(36).slice(2, 10),
-          title: '随手记录', type: 'short', emoji: '📓',
+          title: '随手记录', template: 'novel', type: 'short', emoji: '📓',
           quotes: orphans.map((n) => ({ id: n.id || ('q' + Math.random().toString(36).slice(2, 8)), text: n.text || '', drawings: [], createdAt: n.createdAt || now })),
           createdAt: now,
         }, empty));
@@ -267,26 +379,13 @@
       '  <div class="nn-mask-side" id="nn-mask-side"></div>' +
       '  <div class="nn-split">' +
       '    <aside class="nn-side" id="nn-side">' +
-      '      <div class="nn-side-head">小说拆文</div>' +
-      '      <div class="nn-side-group">' +
-      '        <button class="nn-side-btn on" data-view="books" type="button">' +
-      '          <span class="nn-side-icon">' + App.icon('book') + '</span><span>我的拆书</span>' +
-      '        </button>' +
-      '        <div class="nn-side-list" id="nn-side-books"></div>' +
-      '        <button class="nn-side-new" id="nn-side-new" type="button">＋ 新建书</button>' +
+      '      <div class="nn-side-head" id="nn-side-head">拆文</div>' +
+      '      <div class="nn-tpl-switch" id="nn-tpl-switch"></div>' +
+      '      <div class="nn-side-scroll">' +
+      '        <div class="nn-side-group" id="nn-side-group"></div>' +
+      '        <div class="nn-side-group" id="nn-side-agg"></div>' +
+      '        <div class="nn-side-group" id="nn-side-rank"></div>' +
       '      </div>' +
-      '      <div class="nn-side-group">' +
-      '        <button class="nn-side-btn" data-view="rank" type="button">' +
-      '          <span class="nn-side-icon">' + App.icon('chart') + '</span><span>榜单</span>' +
-      '        </button>' +
-      '      </div>' +
-      '      <div class="nn-side-sep"></div>' +
-      '      <button class="nn-side-btn flat" data-view="allQuotes" type="button">' +
-      '        <span class="nn-side-icon">' + App.icon('doc') + '</span><span>全部摘抄</span>' +
-      '      </button>' +
-      '      <button class="nn-side-btn flat" data-view="allAnalyses" type="button">' +
-      '        <span class="nn-side-icon">' + App.icon('bulb') + '</span><span>全部分析</span>' +
-      '      </button>' +
       '    </aside>' +
       '    <main class="nn-main" id="nn-main"></main>' +
       '  </div>' +
@@ -295,28 +394,28 @@
 
     const mainEl = container.querySelector('#nn-main');
     const sideEl = container.querySelector('#nn-side');
-    const sideBooksEl = container.querySelector('#nn-side-books');
+    const switchEl = container.querySelector('#nn-tpl-switch');
+    const sideHeadEl = container.querySelector('#nn-side-head');
+    const groupEl = container.querySelector('#nn-side-group');
+    const aggEl = container.querySelector('#nn-side-agg');
+    const rankEl = container.querySelector('#nn-side-rank');
     const fabEl = container.querySelector('#nn-fab');
     const menuBtn = container.querySelector('#nn-menu');
     const maskSide = container.querySelector('#nn-mask-side');
 
-    // 侧边栏点击：切换视图
-    container.querySelectorAll('.nn-side-btn').forEach((b) => {
-      b.addEventListener('click', () => {
-        const v = b.dataset.view;
-        if (!v) return;
-        if (v !== 'detail') currentBookId = null;
-        if (v !== 'rank' && v !== 'summary') activeRankKey = null;
-        view = v;
-        paintSide();
-        paint();
-        // 移动端点击后收起侧边栏
-        if (window.innerWidth < 768) sideEl.classList.remove('open');
-      });
-    });
-    container.querySelector('#nn-side-new').addEventListener('click', (e) => {
-      e.stopPropagation();
-      openBookEditor(null);
+    // 侧边栏点击：用事件委托，按钮由 paintSide 动态生成也能生效
+    sideEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.nn-side-btn');
+      if (!btn) return;
+      const v = btn.dataset.view;
+      if (!v) return;
+      if (v !== 'detail') currentBookId = null;
+      if (v !== 'rank' && v !== 'summary') activeRankKey = null;
+      view = v;
+      paintSide();
+      paint();
+      // 移动端点击后收起侧边栏
+      if (window.innerWidth < 768) sideEl.classList.remove('open');
     });
     fabEl.addEventListener('click', () => openBookEditor(null));
     menuBtn.addEventListener('click', () => {
@@ -324,45 +423,99 @@
     });
     maskSide.addEventListener('click', () => sideEl.classList.remove('open'));
 
-    // 侧边栏高亮 + 书本列表（侧栏始终展示所有书）
+    // 侧边栏：模板切换器 + 书架 + 聚合视图 + (仅拆文)榜单
     function paintSide() {
-      container.querySelectorAll('.nn-side-btn').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
+      const tpl = activeTemplate();
+
+      // 1) 模板切换器
+      switchEl.innerHTML = Object.keys(TEMPLATES).map((id) =>
+        '<button class="nn-tpl-chip' + (id === activeTemplateId ? ' on' : '') + '" data-tpl="' + id + '" type="button" title="' + TEMPLATES[id].label + '">' +
+        App.icon(TEMPLATES[id].icon) + '</button>'
+      ).join('');
+
+      // 2) 书架分组（仅显示当前模板的笔记本）
       const showBooks = (view === 'books' || view === 'detail');
-      sideBooksEl.style.display = showBooks ? '' : 'none';
-      container.querySelector('#nn-side-new').style.display = showBooks ? '' : 'none';
-      sideBooksEl.innerHTML = data.books.map((b) => {
-        const on = (view === 'detail' && b.id === currentBookId) ? ' on' : '';
-        return '<button class="nn-side-book' + on + '" data-bid="' + b.id + '" type="button">' +
-          '<span class="nn-side-book-e">' + (b.emoji || '📕') + '</span>' +
-          '<span class="nn-side-book-t">' + App.escapeHtml(b.title) + '</span>' +
-          '</button>';
-      }).join('');
-      sideBooksEl.querySelectorAll('.nn-side-book').forEach((b) => {
+      const booksHtml = data.books
+        .filter((b) => (b.template || 'novel') === activeTemplateId)
+        .map((b) => {
+          const on = (view === 'detail' && b.id === currentBookId) ? ' on' : '';
+          return '<button class="nn-side-book' + on + '" data-bid="' + b.id + '" type="button">' +
+            '<span class="nn-side-book-e">' + (b.emoji || '📕') + '</span>' +
+            '<span class="nn-side-book-t">' + App.escapeHtml(b.title) + '</span>' +
+            '</button>';
+        }).join('');
+      groupEl.innerHTML =
+        '<button class="nn-side-btn' + (showBooks ? ' on' : '') + '" data-view="books" type="button">' +
+        '  <span class="nn-side-icon">' + App.icon('book') + '</span><span>' + tpl.nav.shelf + '</span>' +
+        '</button>' +
+        '<div class="nn-side-list" id="nn-side-books">' + booksHtml + '</div>' +
+        '<button class="nn-side-new" id="nn-side-new" type="button">＋ 新建</button>';
+
+      // 3) 聚合视图（全部摘抄 / 全部分析 / 全部要点 …）
+      const all = (tpl.nav && tpl.nav.all) || [];
+      aggEl.innerHTML = all.map((a) =>
+        '<button class="nn-side-btn flat' + (view === a.view ? ' on' : '') + '" data-view="' + a.view + '" type="button">' +
+        '  <span class="nn-side-icon">' + App.icon(a.icon) + '</span><span>' + a.label + '</span>' +
+        '</button>'
+      ).join('');
+
+      // 4) 榜单（仅带 hasRank 的模板，如拆文）
+      rankEl.innerHTML = tpl.hasRank
+        ? '<div class="nn-side-sep"></div>' +
+          '<button class="nn-side-btn flat' + (view === 'rank' ? ' on' : '') + '" data-view="rank" type="button">' +
+          '  <span class="nn-side-icon">' + App.icon('chart') + '</span><span>榜单</span>' +
+          '</button>'
+        : '';
+
+      sideHeadEl.textContent = tpl.label;
+      groupEl.querySelector('#nn-side-new').style.display = showBooks ? '' : 'none';
+
+      // 事件：切换模板
+      switchEl.querySelectorAll('[data-tpl]').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          activeTemplateId = chip.dataset.tpl;
+          try { localStorage.setItem(TP_KEY, activeTemplateId); } catch (e) {}
+          // 当前打开的书若不属于新模板，回到书架
+          const cur = getBook(currentBookId);
+          if (cur && (cur.template || 'novel') !== activeTemplateId) currentBookId = null;
+          view = 'books';
+          paintSide();
+          paint();
+          if (window.innerWidth < 768) sideEl.classList.remove('open');
+        });
+      });
+      // 事件：打开书
+      groupEl.querySelectorAll('.nn-side-book').forEach((b) => {
         b.addEventListener('click', (e) => {
           e.stopPropagation();
           currentBookId = b.dataset.bid;
-          activeTabKey = 'title';
+          const bk = getBook(currentBookId);
+          activeTabKey = bk ? bookSections(bk)[0].key : 'title';
           view = 'detail';
           paintSide();
           paint();
           if (window.innerWidth < 768) sideEl.classList.remove('open');
         });
       });
+      // 事件：新建
+      groupEl.querySelector('#nn-side-new').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openBookEditor(null);
+      });
     }
 
     // ---------- 我的书（书架） ----------
     function paintBooks() {
-      const books = data.books;
+      const books = data.books.filter((b) => (b.template || 'novel') === activeTemplateId);
       const cards = books.length
         ? books.map((b) => {
-            const tint = b.type === 'long' ? 'long' : 'short';
-            const total = TABS.reduce((s, t) => s + (b[t.field] || []).length, 0);
+            const total = bookSections(b).reduce((s, t) => s + ((b[t.field] || []).length), 0);
             return '<div class="nn-book" data-bid="' + b.id + '">' +
                     '  <div class="nn-book-cover">' +
                     '    <div class="nn-book-spine"></div>' +
                     '    <div class="nn-book-front">' +
                     '      <div class="nn-book-title">' + App.escapeHtml(b.title) + '</div>' +
-                    '      <div class="nn-book-type nn-book-type-' + tint + '">' + (tint === 'long' ? App.icon('book') + ' 长篇' : App.icon('note') + ' 短篇') + '</div>' +
+                    typeBadgeHtml(b) +
                     '    </div>' +
                     '    <div class="nn-book-back"></div>' +
                     '  </div>' +
@@ -373,7 +526,7 @@
           }).join('')
         : '<div class="nn-shelf-empty">' +
           '  <div class="nn-shelf-emoji">' + App.icon('book') + '</div>' +
-          '  <p class="muted">开拆吧！</p>' +
+          '  <p class="muted">开一本新的吧！</p>' +
           '</div>';
       mainEl.innerHTML = '<div class="nn-shelf">' + cards + '</div>';
 
@@ -385,21 +538,23 @@
             setTimeout(() => {
               view = 'detail';
               currentBookId = bid;
-              activeTabKey = 'title';
+              const bk = getBook(bid);
+              activeTabKey = bk ? bookSections(bk)[0].key : 'title';
               paint();
             }, 620);
           });
       });
     }
 
-    // ---------- 书籍详情：7 tab 横滑 ----------
+    // ---------- 书籍详情：分区 tab 横滑（分区由模板决定） ----------
     function paintDetail() {
       const b = getBook(currentBookId);
       if (!b) { view = 'books'; paintBooks(); return; }
-      const tint = b.type === 'long' ? 'long' : 'short';
-      const total = TABS.reduce((s, t) => s + (b[t.field] || []).length, 0);
+      const sections = bookSections(b);
+      const total = sections.reduce((s, t) => s + ((b[t.field] || []).length), 0);
+      const badge = typeBadgeHtml(b);
 
-      const pages = TABS.map((t, i) => {
+      const pages = sections.map((t) => {
         const arr = b[t.field] || [];
         const list = arr.length
           ? arr.map((it) => itemRow(t.key, it, b.id)).join('')
@@ -413,74 +568,63 @@
                '</div>';
       }).join('');
 
-      const tabsBtns = TABS.map((t, i) =>
+      const tabsBtns = sections.map((t, i) =>
         '<button class="nn-page-tab' + (i === 0 ? ' on' : '') + '" data-tab="' + t.key + '" type="button">' + App.escapeHtml(t.short) + '</button>'
       ).join('');
-      const dots = TABS.map((t, i) =>
+      const dots = sections.map((t, i) =>
         '<span class="nn-page-pager-dot' + (i === 0 ? ' on' : '') + '" data-go="' + i + '"></span>'
       ).join('');
+
+      // 热度趋势卡（仅带榜单的模板，如拆文）
+      const heatHtml = activeTemplate().hasRank
+        ? '  <div class="nn-book-heat">' +
+          '    <div class="nn-book-heat-head">' +
+          '      <span class="nn-book-heat-title">' + App.icon('chart') + ' 排名趋势</span>' +
+          '      ' + nnSegHtml('nn-book-heat-seg', nnBookPeriod) +
+          '      <button class="nn-fav-star' + (nnIsKept(b.title) ? ' on' : '') + '" data-fav-star="' + App.escapeHtml(b.title) + '" type="button" title="收藏后即使下榜也永久保留该书的历史数据">' +
+                 App.icon('star') + '<span class="nn-fav-star-t">' + (nnIsKept(b.title) ? '已收藏' : '收藏') + '</span></button>' +
+          '    </div>' +
+          '    <div class="nn-line-wrap" id="nn-book-line"></div>' +
+          '  </div>'
+        : '';
 
       mainEl.innerHTML =
         '<div class="nn-page">' +
         '  <div class="nn-page-bar">' +
         '    <button class="btn ghost sm nn-back-btn" id="nn-back" type="button">← 书架</button>' +
-        '    <span class="nn-pp-book-tag nn-book-type-' + tint + '">' + (tint === 'long' ? App.icon('book') + ' 长篇' : App.icon('note') + ' 短篇') + '</span>' +
+        '    <span class="nn-pp-book-tag">' + badge + '</span>' +
         '    <div class="nn-book-title-mini">' + App.escapeHtml(b.title) + '</div>' +
         '    <button class="btn sm ghost" id="nn-edit-book" type="button">编辑</button>' +
         '    <button class="btn sm danger" id="nn-del-book" type="button">删除</button>' +
         '  </div>' +
-        '  <div class="nn-book-heat">' +
-        '    <div class="nn-book-heat-head">' +
-        '      <span class="nn-book-heat-title">' + App.icon('chart') + ' 排名趋势</span>' +
-        '      ' + nnSegHtml('nn-book-heat-seg', nnBookPeriod) +
-        '      <button class="nn-fav-star' + (nnIsKept(b.title) ? ' on' : '') + '" data-fav-star="' + App.escapeHtml(b.title) + '" type="button" title="收藏后即使下榜也永久保留该书的历史数据">' +
-                 App.icon('star') + '<span class="nn-fav-star-t">' + (nnIsKept(b.title) ? '已收藏' : '收藏') + '</span></button>' +
-        '    </div>' +
-        '    <div class="nn-line-wrap" id="nn-book-line"></div>' +
-        '  </div>' +
+        heatHtml +
+        '  <div class="nn-book-meta-head"><span class="muted">共 ' + total + ' 条 · ' + sections.length + ' 个分区</span></div>' +
         '  <div class="nn-page-tabs" id="nn-page-tabs">' + tabsBtns + '</div>' +
         '  <div class="nn-pages" id="nn-pages">' + pages + '</div>' +
         '  <div class="nn-page-pager" id="nn-page-pager">' + dots + '</div>' +
         '</div>';
 
       // 热度趋势卡：周期切换 + 收藏（收藏后下榜也保留历史）
-      function paintBookTrend() {
-        const el = mainEl.querySelector('#nn-book-line');
-        if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod), { invert: true, rankMax: 9, fmt: (v) => '排名 ' + v });
-      }
-      nnBindSeg(mainEl, 'nn-book-heat-seg', (p) => { nnBookPeriod = p; paintBookTrend(); });
-      const favBtn = mainEl.querySelector('[data-fav-star]');
-      if (favBtn) {
-        favBtn.addEventListener('click', () => {
-          const t = favBtn.dataset.favStar;
-          const i = nnFavorites.indexOf(t);
-          if (i >= 0) nnFavorites.splice(i, 1); else nnFavorites.push(t);
-          nnSaveFav();
-          const on = favBtn.classList.toggle('on');
-          const label = favBtn.querySelector('.nn-fav-star-t');
-          if (label) label.textContent = on ? '已收藏' : '收藏';
-          App.toast(on ? '已收藏，历史数据将永久保留' : '已取消收藏');
-        });
-      }
-      paintBookTrend();
-
-      const titlePage = mainEl.querySelector('.nn-pp[data-pp="title"]');
-      if (titlePage) {
-        titlePage.innerHTML =
-          '<div class="nn-pp-title-card">' +
-          '  <h2 class="nn-pp-book-title">' + App.escapeHtml(b.title) + '</h2>' +
-          '  <span class="nn-book-type nn-book-type-' + tint + '">' + (tint === 'long' ? App.icon('book') + ' 长篇' : App.icon('note') + ' 短篇') + '</span>' +
-          '  <p class="muted nn-pp-meta">共 ' + total + ' 条内容 · 7 个维度</p>' +
-          '  <div class="nn-pp-section-head" style="margin-top:14px">' +
-          '    <span>标题分析</span>' +
-          '    <button class="btn sm" data-add="title" type="button">＋ 添加</button>' +
-          '  </div>' +
-          '  <div class="nn-section-list">' +
-          ((b.titleAnalysis || []).length
-            ? b.titleAnalysis.map((it) => itemRow('title', it, b.id)).join('')
-            : '<p class="muted nn-empty-inline">还没有标题分析，点「＋ 添加」开始。</p>') +
-          '  </div>' +
-          '</div>';
+      if (activeTemplate().hasRank) {
+        function paintBookTrend() {
+          const el = mainEl.querySelector('#nn-book-line');
+          if (el) el.innerHTML = nnLineChart(nnBookSeries(b.title, nnBookPeriod), { invert: true, rankMax: 9, fmt: (v) => '排名 ' + v });
+        }
+        nnBindSeg(mainEl, 'nn-book-heat-seg', (p) => { nnBookPeriod = p; paintBookTrend(); });
+        const favBtn = mainEl.querySelector('[data-fav-star]');
+        if (favBtn) {
+          favBtn.addEventListener('click', () => {
+            const t = favBtn.dataset.favStar;
+            const i = nnFavorites.indexOf(t);
+            if (i >= 0) nnFavorites.splice(i, 1); else nnFavorites.push(t);
+            nnSaveFav();
+            const on = favBtn.classList.toggle('on');
+            const label = favBtn.querySelector('.nn-fav-star-t');
+            if (label) label.textContent = on ? '已收藏' : '收藏';
+            App.toast(on ? '已收藏，历史数据将永久保留' : '已取消收藏');
+          });
+        }
+        paintBookTrend();
       }
 
       mainEl.querySelector('#nn-back').addEventListener('click', () => {
@@ -489,7 +633,7 @@
       });
       mainEl.querySelector('#nn-edit-book').addEventListener('click', () => openBookEditor(b));
       mainEl.querySelector('#nn-del-book').addEventListener('click', () => {
-        const sum = TABS.map((t) => (b[t.field] || []).length + ' ' + t.short).join(' · ');
+        const sum = sections.map((t) => ((b[t.field] || []).length) + ' ' + t.short).join(' · ');
         App.confirm('删除这本书', '《' + b.title + '》\n' + sum + '\n\n删除后无法恢复，继续？', () => {
           data.books = data.books.filter((x) => x.id !== b.id);
           save();
@@ -508,12 +652,12 @@
       }
       pagesEl.addEventListener('scroll', () => {
         const i = Math.round(pagesEl.scrollLeft / Math.max(1, pagesEl.clientWidth));
-        if (TABS[i]) activeTabKey = TABS[i].key;
+        if (sections[i]) activeTabKey = sections[i].key;
         tabBtns.forEach((bb, idx) => bb.classList.toggle('on', idx === i));
         pagerDots.forEach((d, idx) => d.classList.toggle('on', idx === i));
       });
-      tabBtns.forEach((bb, i) => bb.addEventListener('click', () => { activeTabKey = TABS[i].key; goTo(i); }));
-      pagerDots.forEach((d) => d.addEventListener('click', () => { const i = +d.dataset.go; if (TABS[i]) activeTabKey = TABS[i].key; goTo(i); }));
+      tabBtns.forEach((bb, i) => bb.addEventListener('click', () => { if (sections[i]) { activeTabKey = sections[i].key; goTo(i); } }));
+      pagerDots.forEach((d) => d.addEventListener('click', () => { const i = +d.dataset.go; if (sections[i]) { activeTabKey = sections[i].key; goTo(i); } }));
 
       mainEl.querySelectorAll('[data-add]').forEach((btn) => {
         btn.addEventListener('click', () => openItemEditor(b, btn.dataset.add, null, paintDetail));
@@ -522,7 +666,7 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const [k, iid] = btn.dataset.iedit.split('|');
-          const field = fieldOf(k);
+          const field = fieldOf(k, b);
           const it = (b[field] || []).find((x) => x.id === iid);
           if (it) openItemEditor(b, k, it, paintDetail);
         });
@@ -531,8 +675,8 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const [k, iid] = btn.dataset.idel.split('|');
-          const field = fieldOf(k);
-          const name = labelOf(k);
+          const field = fieldOf(k, b);
+          const name = labelOf(k, b);
           App.confirm('删除' + name, '确认删除这条' + name + '？', () => {
             b[field] = (b[field] || []).filter((x) => x.id !== iid);
             save(); paintDetail();
@@ -542,8 +686,8 @@
       });
       bindViewers();
 
-      // 重绘后恢复到上次停留的分页（保存/删除操作后不再跳回标题）
-      const restoreIdx = Math.max(0, TABS.findIndex((t) => t.key === activeTabKey));
+      // 重绘后恢复到上次停留的分页（保存/删除操作后不再跳回第一页）
+      const restoreIdx = Math.max(0, sections.findIndex((t) => t.key === activeTabKey));
       if (restoreIdx > 0) {
         setTimeout(() => {
           const w = pagesEl.clientWidth || 1;
@@ -572,7 +716,7 @@
     // ---------- 手写大图查看（向量渲染） ----------
     function openDrawingViewer(key, bookId, itemId, idx) {
       const b = getBook(bookId); if (!b) return;
-      const field = fieldOf(key);
+      const field = fieldOf(key, b);
       const it = (b[field] || []).find((x) => x.id === itemId); if (!it) return;
       const d = (it.drawings || [])[idx]; if (!d) return;
       const wrap = document.createElement('div');
@@ -658,10 +802,11 @@
 
     function openItemEditor(book, key, existing, onDone) {
       const isNew = !existing;
-      const field = fieldOf(key);
-      const tab = TABS.find((t) => t.key === key) || {};
+      const field = fieldOf(key, book);
+      const tab = bookSections(book).find((t) => t.key === key) || {};
       const fullName = tab.full || key;
-      const hint = key === 'quotes' ? '抄录精彩的句子、好词好句……' : '拆解这一维度的写作要点、技巧、节奏……';
+      const isQuote = tab.kind === 'quote';
+      const hint = isQuote ? '抄录精彩的句子、好词好句……' : '记录这一维度的要点、想法、细节……';
 
       let pages = clonePages(existing ? existing.drawings : []);
       if (!pages.length) pages.push({ id: uid('d'), strokes: [], thumb: '', img: '', undo: [], redo: [] });
@@ -1159,23 +1304,28 @@
       renderPages(); updateUndoRedo();
     }
 
-    // ---------- 新建/编辑书（弹层） ----------
+    // ---------- 新建/编辑笔记本（弹层，类型由模板决定） ----------
     function openBookEditor(existing) {
       const isNew = !existing;
+      const tplId = existing ? (existing.template || 'novel') : activeTemplateId;
+      const tpl = TEMPLATES[tplId] || TEMPLATES.novel;
+      const types = tpl.types || [];
       const wrap = document.createElement('div');
       wrap.className = 'nn-mask';
-      let curType = existing ? existing.type : 'short';
+      let curType = existing ? existing.type : (types.length ? types[0].key : '');
+      const typeBlock = types.length
+        ? '<div>' +
+          '  <p class="muted nb-h">类型</p>' +
+          '  <div class="nb-type">' +
+             types.map((t) => '<button class="nb-type-btn' + (t.key === curType ? ' on' : '') + '" data-t="' + t.key + '" type="button">' + App.icon(t.icon || 'note') + ' ' + t.label + '</button>').join('') +
+          '  </div>' +
+          '</div>'
+        : '';
       wrap.innerHTML =
         '<div class="nn-sheet">' +
-        '  <h3>' + (isNew ? '新建一本' : '编辑书') + '</h3>' +
-        '  <input id="nb-title" type="text" maxlength="20" placeholder="书名（10字以内最佳）" value="' + (existing ? App.escapeHtml(existing.title) : '') + '" />' +
-        '  <div>' +
-        '    <p class="muted nb-h">类型</p>' +
-        '    <div class="nb-type">' +
-        '      <button class="nb-type-btn' + (curType === 'short' ? ' on' : '') + '" data-t="short" type="button">' + App.icon('note') + ' 短篇</button>' +
-        '      <button class="nb-type-btn' + (curType === 'long' ? ' on' : '') + '" data-t="long" type="button">' + App.icon('book') + ' 长篇</button>' +
-        '    </div>' +
-        '  </div>' +
+        '  <h3>' + (isNew ? ('新建' + tpl.label) : '编辑笔记本') + '</h3>' +
+        '  <input id="nb-title" type="text" maxlength="20" placeholder="标题（10字以内最佳）" value="' + (existing ? App.escapeHtml(existing.title) : '') + '" />' +
+        typeBlock +
         '  <div class="nn-e-btns">' +
         '    <button class="btn ghost" data-close type="button">取消</button>' +
         '    <button class="btn" id="nb-ok" type="button">' + (isNew ? '创建' : '保存') + '</button>' +
@@ -1183,27 +1333,33 @@
         '</div>';
       document.body.appendChild(wrap);
       const titleI = wrap.querySelector('#nb-title');
-      wrap.querySelector('.nb-type').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-t]'); if (!b) return;
-        curType = b.dataset.t;
-        wrap.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('on', x === b));
-      });
+      const typeBox = wrap.querySelector('.nb-type');
+      if (typeBox) {
+        typeBox.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-t]'); if (!b) return;
+          curType = b.dataset.t;
+          typeBox.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('on', x === b));
+        });
+      }
       function close() { wrap.remove(); }
       wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.matches('[data-close]')) close(); });
       wrap.querySelector('#nb-ok').addEventListener('click', () => {
         const t = titleI.value.trim();
-        if (!t) { App.toast('请输入书名'); return; }
+        if (!t) { App.toast('请输入标题'); return; }
         if (isNew) {
-          const empty = emptyAnalysisFields();
-          data.books.push(Object.assign({
-            id: uid('b'), title: t, type: curType, emoji: '📕',
-            quotes: [], createdAt: Date.now(),
-          }, empty));
+          const book = {
+            id: uid('b'), title: t, template: tplId,
+            emoji: tpl.defaultEmoji || '📕', createdAt: Date.now(),
+          };
+          Object.assign(book, tpl.emptyBook());
+          if (types.length) book.type = curType;
+          data.books.push(book);
         } else {
-          existing.title = t; existing.type = curType;
+          existing.title = t;
+          if (types.length) existing.type = curType; else delete existing.type;
         }
         save(); close();
-        paint();
+        paintSide(); paint();
         App.toast(isNew ? '已创建' : '已更新');
       });
       setTimeout(() => titleI.focus(), 60);
@@ -1609,11 +1765,10 @@
         b.addEventListener('click', (e) => {
           e.stopPropagation(); // 别冒泡到条目，否则会同时弹出趋势图
           const name = b.dataset.fav;
-          const empty = emptyAnalysisFields();
           data.books.push(Object.assign({
-            id: uid('b'), title: name, type: 'short', emoji: '📕',
-            quotes: [], createdAt: Date.now(),
-          }, empty));
+            id: uid('b'), title: name, template: 'novel', type: 'short', emoji: '📕',
+            createdAt: Date.now(),
+          }, TEMPLATES.novel.emptyBook()));
           save();
           App.toast('已创建《' + name + '》到书架');
           paintSide();
@@ -1782,14 +1937,23 @@
     }
 
     // ---------- 全部摘抄 / 全部分析（不分书） ----------
-    function paintAll(kind, label, emoji) {
+    // ---------- 聚合视图（全部摘抄 / 全部分析 / 全部要点 / 全部任务 …） ----------
+    // 入参 view 对应当前模板 nav.all 中的 view；按 kind 过滤分区（quote / 非 quote）。
+    function paintAll(view) {
+      const tpl = activeTemplate();
+      const entry = ((tpl.nav && tpl.nav.all) || []).find((a) => a.view === view) || { kind: 'quotes', label: '内容' };
+      const wantQuote = entry.kind === 'quotes';
+      const label = entry.label;
       const all = [];
-      data.books.forEach((b) => {
-        TABS.forEach((t) => {
-          if (kind === 'quotes' ? t.key !== 'quotes' : t.key === 'quotes') return;
-          (b[t.field] || []).forEach((it) => all.push({ book: b, tab: t, item: it }));
+      data.books
+        .filter((b) => (b.template || 'novel') === activeTemplateId)
+        .forEach((b) => {
+          bookSections(b).forEach((t) => {
+            const isQuote = t.kind === 'quote';
+            if (wantQuote !== isQuote) return;
+            (b[t.field] || []).forEach((it) => all.push({ book: b, tab: t, item: it }));
+          });
         });
-      });
       all.sort((a, b) => (b.item.createdAt || 0) - (a.item.createdAt || 0));
 
       const rows = all.length
@@ -1811,8 +1975,8 @@
                    '  </div>' +
                    '</div>';
           }).join('')
-        : '<div class="nn-shelf-empty"><div class="nn-shelf-emoji">' + emoji + '</div>' +
-          '<p class="muted">还没有' + label + '。点「我的拆书」进入任意一本书，添加内容。</p></div>';
+        : '<div class="nn-shelf-empty"><div class="nn-shelf-emoji">' + App.icon(tpl.icon) + '</div>' +
+          '<p class="muted">还没有' + label + '。进入任意一本' + tpl.label + '，添加内容。</p></div>';
 
       mainEl.innerHTML =
         '<div class="nn-all">' +
@@ -1832,7 +1996,7 @@
           const parts = btn.dataset.iedit.split('|');
           const k = parts[0], bid = parts[1], iid = parts[2];
           const b = getBook(bid); if (!b) return;
-          const field = fieldOf(k);
+          const field = fieldOf(k, b);
           const it = (b[field] || []).find((x) => x.id === iid);
           if (it) openItemEditor(b, k, it, paint);
         });
@@ -1843,8 +2007,8 @@
           const parts = btn.dataset.idel.split('|');
           const k = parts[0], bid = parts[1], iid = parts[2];
           const b = getBook(bid); if (!b) return;
-          const field = fieldOf(k);
-          const name = labelOf(k);
+          const field = fieldOf(k, b);
+          const name = labelOf(k, b);
           App.confirm('删除' + name, '确认删除这条' + name + '？', () => {
             b[field] = (b[field] || []).filter((x) => x.id !== iid);
             save(); paint(); App.toast('已删除');
@@ -1857,14 +2021,14 @@
     // 见文件顶部「模块级纯函数」：fmtDate
 
     function paint() {
-      // FAB 只在「我的书/详情」下显示（创建新书）
+      // FAB 只在「我的书/详情」下显示（创建笔记本）
       fabEl.style.display = (view === 'books' || view === 'detail') ? '' : 'none';
       if (view === 'books') paintBooks();
       else if (view === 'detail') paintDetail();
       else if (view === 'rank') paintRank();
       else if (view === 'summary') paintSummary();
-      else if (view === 'allQuotes') paintAll('quotes', '摘抄', '📑');
-      else if (view === 'allAnalyses') paintAll('analyses', '分析', '💡');
+      else if (isAllView(view)) paintAll(view);
+      else { view = 'books'; paintBooks(); }
     }
     paintSide();
     paint();

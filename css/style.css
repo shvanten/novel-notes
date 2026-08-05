@@ -2570,6 +2570,27 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
   font-size: 15px; font-weight: 700; color: var(--text-strong);
   padding: 6px 10px 10px; letter-spacing: .5px;
 }
+/* 模板切换器：一排图标 chip */
+.nn-tpl-switch {
+  display: flex; gap: 4px; padding: 0 8px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px; flex-wrap: wrap;
+}
+.nn-tpl-chip {
+  flex: 1 1 0; min-width: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 7px 0; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); border-radius: 8px; cursor: pointer; font-size: 16px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.nn-tpl-chip:hover { background: var(--surface-2); }
+.nn-tpl-chip.on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent-deep); font-weight: 700;
+}
+.nn-side-scroll { flex: 1 1 auto; padding-bottom: 8px; }
+.nn-book-meta-head { padding: 6px 14px 2px; font-size: 12px; }
 .nn-side-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
 .nn-side-sep { height: 1px; background: var(--border); margin: 8px 4px; }
 .nn-side-btn {

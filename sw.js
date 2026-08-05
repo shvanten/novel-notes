@@ -1,5 +1,5 @@
 /* 通用笔记 · 静态缓存（离线可用）。改版后请把版本号 +1 强制更新。 */
-const CACHE = 'chaowen-v24';
+const CACHE = 'chaowen-v25';
 const ASSETS = [
   './',
   'index.html',

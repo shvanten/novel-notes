@@ -1,6 +1,6 @@
 /**
  * 通用笔记（模板化）：
- * - 自己创建笔记本，类型由 TEMPLATES 决定（拆文 / 读书学习 / 会议工作 / 日记随想 / 项目待办…）
+ * - 自己创建笔记本，类型由 TEMPLATES 决定（拆文 / 读书学习 / 日记随想 …）
  * - 每本笔记本按模板有若干「分区」(tab)，分区内容 = 文字 + 多页手写条目
  * - 每条 item 支持「文字」+「多页手写」(向量笔触：多色笔 / 荧光笔 / 橡皮擦 / 套索选择 / 撤回还原)
  * - 编辑/添加弹层沾满一页，全屏可写
@@ -73,20 +73,6 @@
       },
       emptyBook() { return { excerptAnalysis: [], reflectionAnalysis: [], annotationAnalysis: [] }; },
     },
-    meeting: {
-      label: '会议工作', icon: 'chat', defaultEmoji: '📒', hasRank: false,
-      types: [],
-      sections: [
-        { key: 'agenda', short: '议程', full: '议程', field: 'agendaAnalysis', kind: 'analysis' },
-        { key: 'points', short: '要点', full: '要点', field: 'pointsAnalysis', kind: 'analysis' },
-        { key: 'todos',  short: '待办', full: '待办', field: 'todosAnalysis',  kind: 'analysis' },
-      ],
-      nav: {
-        shelf: '我的会议',
-        all: [{ view: 'allPoints', label: '全部要点', icon: 'bulb', kind: 'analyses' }],
-      },
-      emptyBook() { return { agendaAnalysis: [], pointsAnalysis: [], todosAnalysis: [] }; },
-    },
     journal: {
       label: '日记随想', icon: 'leaf', defaultEmoji: '📔', hasRank: false,
       types: [],
@@ -95,19 +81,6 @@
       ],
       nav: { shelf: '我的日记', all: [] },
       emptyBook() { return { bodyAnalysis: [] }; },
-    },
-    todo: {
-      label: '项目待办', icon: 'tag', defaultEmoji: '📋', hasRank: false,
-      types: [],
-      sections: [
-        { key: 'doing', short: '进行中', full: '进行中', field: 'doingAnalysis', kind: 'analysis' },
-        { key: 'done',  short: '已完成', full: '已完成', field: 'doneAnalysis',  kind: 'analysis' },
-      ],
-      nav: {
-        shelf: '我的清单',
-        all: [{ view: 'allTasks', label: '全部任务', icon: 'tag', kind: 'analyses' }],
-      },
-      emptyBook() { return { doingAnalysis: [], doneAnalysis: [] }; },
     },
   };
 
@@ -226,7 +199,7 @@
   App.registerFeature({
     id: 'notes',
     title: '笔记',
-    desc: '通用笔记：拆文 / 读书 / 会议 / 日记 / 待办',
+    desc: '通用笔记：拆文 / 读书 / 日记',
     icon: '📝',
     color: '#b08bbf',
     render(container) {
@@ -235,7 +208,9 @@
     // ---------- 当前模板 / 分区（数据驱动，替代写死的 TABS） ----------
     const TP_KEY = 'nnActiveTemplate';
     function activeTemplateId0() {
-      try { return localStorage.getItem(TP_KEY) || 'novel'; } catch (e) { return 'novel'; }
+      let id = 'novel';
+      try { id = localStorage.getItem(TP_KEY) || 'novel'; } catch (e) {}
+      return TEMPLATES[id] ? id : 'novel';
     }
     let activeTemplateId = activeTemplateId0();
     function activeTemplate() { return TEMPLATES[activeTemplateId] || TEMPLATES.novel; }
@@ -295,6 +270,8 @@
     function migrate(old) {
       if (!old || typeof old !== 'object') return { books: [] };
       if (Array.isArray(old.books)) {
+        // 清除已下线的模板（如「会议工作」「项目待办」）：其字段离开模板无意义，直接丢弃
+        old.books = old.books.filter((b) => TEMPLATES[(b && b.template) || 'novel']);
         old.books.forEach((b) => {
           b.template = b.template || 'novel';
           const tpl = bookTemplate(b);

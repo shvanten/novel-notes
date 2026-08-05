@@ -237,47 +237,6 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
 }
 .btn:active { transform: scale(.97); opacity: .92; }
 
-/* ---------- 待办清单（绿色深浅层次） ---------- */
-.todo-form { display: flex; gap: 10px; margin-bottom: 16px; }
-.todo-form input {
-  flex: 1;
-  padding: 13px 15px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-  font-size: 15px;
-  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
-}
-.todo-form input::placeholder { color: var(--muted); }
-.todo-form input:focus {
-  outline: none;
-  background: var(--card);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
-}
-.todo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.todo-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface-2);
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  transition: background .2s ease;
-}
-.todo-item label { display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer; }
-.todo-item input[type="checkbox"] { width: 19px; height: 19px; accent-color: var(--accent-deep); }
-.todo-item span { font-size: 15px; color: var(--text); }
-.todo-item.done span { text-decoration: line-through; color: var(--muted); }
-.todo-item .del {
-  border: none; background: transparent; color: var(--muted);
-  font-size: 16px; cursor: pointer; width: 30px; height: 30px; border-radius: 9px;
-  transition: background .15s ease, color .15s ease;
-}
-.todo-item .del:active { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); color: var(--text); }
-
 /* ---------- 随手记 ---------- */
 .notes-area {
   width: 100%;
@@ -2776,7 +2735,6 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
 .nn-sum-hero-cell,
 .mo-week-row,
 .lg-sum-row,
-.todo-item,
 .ci-part,
 .st-note,
 .nn-book,
@@ -2791,7 +2749,6 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
 .nn-sum-hero-cell:hover,
 .mo-week-row:hover,
 .lg-sum-row:hover,
-.todo-item:hover,
 .ci-part:hover,
 .st-note:hover,
 .nn-book:hover,

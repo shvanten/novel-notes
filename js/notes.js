@@ -175,7 +175,7 @@
     let cat = '';
     if (listName === '推荐榜' || listName === '口碑榜') cat = '赞';
     else if (listName === '热度榜') cat = '热度';
-    else if (listName === '全网热议高分佳作') cat = '黑马';
+    else if (listName === '新书榜') cat = '黑马';
     else {
       const m = sl.match(/(赞|热度|收藏|评论|黑马指数|黑马|指数)/);
       if (m) cat = m[1].indexOf('黑马') >= 0 ? '黑马' : m[1];
@@ -1354,8 +1354,9 @@
       { t: '照殿红', a: '盐选热门', tag: '脑洞·短篇', d: '女主手握照殿红四次穿越的时空闭环设定。' },
     ];
     // 不在「榜单」页展示、也不参与热度聚合的榜单（前端过滤即可，不动 rank.json）。
-    // 说明：全网热议高分佳作已按用户要求加入榜单展示（黑马指数按榜单位置折算热度，与推荐/热度榜口径一致）；仅「新书榜」口径不同，继续隐藏。
-    const HIDDEN_LIST_NAMES = new Set(['新书榜']);
+    // 说明：真实接口返回 5 个榜（推荐榜/热度榜/口碑榜/新书榜/长篇榜），全部纳入展示与热度聚合；
+    // 「全网热议高分佳作」为历史误记（实为长篇榜），已移除；新书榜不再单独隐藏。
+    const HIDDEN_LIST_NAMES = new Set();
     function filterRankLists(lists) {
       return (lists || []).filter((L) => !HIDDEN_LIST_NAMES.has(L.name));
     }
@@ -1668,7 +1669,7 @@
         '    <button class="nn-modal-x" type="button" aria-label="关闭">×</button></div>' +
         '  ' + nnSegHtml('nn-modal-seg', 'day') +
         '  <div class="nn-line-wrap" id="nn-modal-line"></div>' +
-        '  <div class="nn-modal-meta">仅统计主榜（不含「新书榜」）· 未在榜的日期按 0 计。' +
+        '  <div class="nn-modal-meta">统计全部榜单（推荐/热度/口碑/新书/长篇）· 未在榜的日期按 0 计。' +
         (nnIsKept(title) ? '该书已收藏，历史将永久保留。' : '收藏或加入书架后，下榜也会保留历史。') +
         '</div>' +
         '</div>';

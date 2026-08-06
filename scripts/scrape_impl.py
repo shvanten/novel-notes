@@ -23,20 +23,20 @@
      打开 https://www.zhihu.com/fiore/h5/vip-web，拦截接口响应拿原始 JSON；
   3) 任何情况下抓不到都明确报错，绝不直接写空/假数据。
 
-榜名映射：接口返回 type=well 的「长篇榜」映射成笔记页已用的「全网热议高分佳作」，
-           以保证前端 4 主榜布局不变；其余按 type 直映。
+榜名：直接使用接口返回的真实榜名（推荐榜/热度榜/口碑榜/新书榜/长篇榜），
+           不再编造/映射成不存在的榜名；输出顺序按 PREFERRED_ORDER 固定。
 """
 import os, json, asyncio, urllib.request, urllib.error
 
 # 接口返回的榜单顺序较随意，按此顺序固定输出，保证前端展示顺序稳定
-PREFERRED_ORDER = ["推荐榜", "热度榜", "口碑榜", "全网热议高分佳作", "新书榜"]
-# 接口 type -> 笔记页榜名
+PREFERRED_ORDER = ["推荐榜", "热度榜", "口碑榜", "新书榜", "长篇榜"]
+# 接口 type -> 真实榜名（head.title 即已是中文名，type 仅作兜底/校验）
 TYPE_TO_NAME = {
     "recommend": "推荐榜",
     "hot": "热度榜",
     "reputation": "口碑榜",
     "new_book": "新书榜",
-    "well": "全网热议高分佳作",
+    "well": "长篇榜",
 }
 
 API_URL = "https://api.zhihu.com/km-vip-zhihu-web/vip_tab/svip_story?modules=billboard"
@@ -106,7 +106,7 @@ def fetch_api():
 
 
 # ----------------- 以下为 Playwright 兜底路径 -----------------
-EXPECTED_LISTS = ["推荐榜", "热度榜", "口碑榜", "全网热议高分佳作", "新书榜"]
+EXPECTED_LISTS = ["推荐榜", "热度榜", "口碑榜", "新书榜", "长篇榜"]
 
 
 def _candidate_lists(obj):

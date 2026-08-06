@@ -11,8 +11,8 @@
     若接口失败，再回退真实浏览器（Playwright，可带登录 cookie）拦截接口响应。
     接口不返回作者字段，a 保留为空（不丢字段）。
 - 归档：
-    * data/rank.json               —— 当前实时快照（含「新书榜」，前端会隐藏）
-    * data/rank-history/<日期>.json —— 当日归档（剔除「新书榜」，item 仅留 t/a/tag/d）
+    * data/rank.json               —— 当前实时快照（5 个榜全部保留）
+    * data/rank-history/<日期>.json —— 当日归档（5 个榜全部保留，item 仅留 t/a/tag/d）
     * data/rank-history.json       —— 日期清单数组（追加当天，保持有序）
 - 推送：仅 add 明确路径（严禁 git add -A），commit 后用 -c http.sslVerify=false 推送，
         规避本机 git 2.54 的 schannel 证书吊销检查失败。
@@ -36,7 +36,7 @@ RANK_JSON = os.path.join(DATA, "rank.json")
 HISTORY_DIR = os.path.join(DATA, "rank-history")
 MANIFEST = os.path.join(DATA, "rank-history.json")
 SOURCE = "https://www.zhihu.com/fiore/h5/vip-web"
-HIDDEN_LIST_NAMES = {"新书榜"}  # 归档每日文件剔除（与前端 HIDDEN_LIST_NAMES 一致）
+HIDDEN_LIST_NAMES = set()  # 不再剔除任何榜；5 个真实榜（推荐/热度/口碑/新书/长篇）全部保留
 
 
 def today_str():
@@ -96,8 +96,27 @@ def archive(data, date=None, root=ROOT):
     return arch_path
 
 
+def _authed_push_url(root):
+    """从 origin 远程 URL 提取已内嵌的 token，构造「token 作用户名、密码位留空」的
+    推送 URL，避免 git 在无 TTY 环境下弹出密码提示导致自动化失败。
+    若无法解析则回退为 'origin'（由调用方决定）。"""
+    import re
+    try:
+        out = subprocess.run(["git", "-C", root, "remote", "get-url", "origin"],
+                             capture_output=True, text=True, check=True)
+    except Exception:
+        return None
+    url = out.stdout.strip()
+    m = re.match(r"https://([^@/]+)@(github\.com/.+)", url)
+    if not m:
+        return None
+    tok, rest = m.group(1), m.group(2)
+    return "https://%s:@%s" % (tok, rest)
+
+
 def git_commit_push(msg, root=ROOT):
-    """仅 add 明确路径，commit，并用 -c http.sslVerify=false 推送。返回是否真的提交了。"""
+    """仅 add 明确路径，commit，并用 -c http.sslVerify=false 推送（非交互）。
+    返回是否真的提交了。"""
     day_file = os.path.join("data", "rank-history", today_str() + ".json")
     files = ["data/rank.json", "data/rank-history.json", day_file]
     subprocess.run(["git", "-C", root, "add"] + files, check=True)
@@ -105,11 +124,17 @@ def git_commit_push(msg, root=ROOT):
         print("[sync] 无变化，跳过提交。")
         return False
     subprocess.run(["git", "-C", root, "commit", "-m", msg], check=True)
-    # 远程 URL 已内嵌 token，无需额外认证；-c 仅对该命令生效
-    subprocess.run(
-        ["git", "-C", root, "-c", "http.sslVerify=false", "push", "origin", "HEAD:main"],
-        check=True,
-    )
+    # 远程 URL 已内嵌 token；构造非交互推送 URL，并关闭 askpass/凭据助手与 TTY 提示
+    push_url = _authed_push_url(root)
+    env = dict(os.environ)
+    env["GIT_ASKPASS"] = ""
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    base = ["git", "-C", root, "-c", "http.sslVerify=false", "-c", "credential.helper="]
+    if push_url:
+        cmd = base + ["push", push_url, "HEAD:main"]
+    else:
+        cmd = base + ["push", "origin", "HEAD:main"]
+    subprocess.run(cmd, check=True, env=env)
     print("[sync] 已提交并推送到 GitHub。")
     return True
 

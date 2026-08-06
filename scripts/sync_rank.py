@@ -7,12 +7,13 @@
 - 抓取（见 scripts/scrape_impl.py）：
     首选直连 JSON 接口（已实测无需登录/签名）：
       GET https://api.zhihu.com/km-vip-zhihu-web/vip_tab/svip_story?modules=billboard
-    该接口返回 5 个榜（推荐/热度/口碑/新书/长篇，各 12 本）；
+    该接口返回 5 个榜（推荐/热度/口碑/新书/长篇，各 12 本），但 fiore 首页「榜单」板块只展示
+    推荐/热度/口碑/长篇 4 个（新书榜是 vip-ranking 排行页专属 tab），故抓取时只保留这 4 个；
     若接口失败，再回退真实浏览器（Playwright，可带登录 cookie）拦截接口响应。
     接口不返回作者字段，a 保留为空（不丢字段）。
 - 归档：
-    * data/rank.json               —— 当前实时快照（5 个榜全部保留）
-    * data/rank-history/<日期>.json —— 当日归档（5 个榜全部保留，item 仅留 t/a/tag/d）
+    * data/rank.json               —— 当前实时快照（fiore 首页 4 榜：推荐/热度/口碑/长篇）
+    * data/rank-history/<日期>.json —— 当日归档（同 4 榜，item 仅留 t/a/tag/d）
     * data/rank-history.json       —— 日期清单数组（追加当天，保持有序）
 - 推送：仅 add 明确路径（严禁 git add -A），commit 后用 -c http.sslVerify=false 推送，
         规避本机 git 2.54 的 schannel 证书吊销检查失败。
@@ -36,7 +37,7 @@ RANK_JSON = os.path.join(DATA, "rank.json")
 HISTORY_DIR = os.path.join(DATA, "rank-history")
 MANIFEST = os.path.join(DATA, "rank-history.json")
 SOURCE = "https://www.zhihu.com/fiore/h5/vip-web"
-HIDDEN_LIST_NAMES = set()  # 不再剔除任何榜；5 个真实榜（推荐/热度/口碑/新书/长篇）全部保留
+HIDDEN_LIST_NAMES = set()  # 抓取侧已只产出 fiore 首页 4 榜（推荐/热度/口碑/长篇），无需再隐藏
 
 
 def today_str():

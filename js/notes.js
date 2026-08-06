@@ -175,7 +175,7 @@
     let cat = '';
     if (listName === '推荐榜' || listName === '口碑榜') cat = '赞';
     else if (listName === '热度榜') cat = '热度';
-    else if (listName === '新书榜') cat = '黑马';
+    else if (listName === '长篇榜') cat = '黑马';
     else {
       const m = sl.match(/(赞|热度|收藏|评论|黑马指数|黑马|指数)/);
       if (m) cat = m[1].indexOf('黑马') >= 0 ? '黑马' : m[1];
@@ -1354,8 +1354,9 @@
       { t: '照殿红', a: '盐选热门', tag: '脑洞·短篇', d: '女主手握照殿红四次穿越的时空闭环设定。' },
     ];
     // 不在「榜单」页展示、也不参与热度聚合的榜单（前端过滤即可，不动 rank.json）。
-    // 说明：真实接口返回 5 个榜（推荐榜/热度榜/口碑榜/新书榜/长篇榜），全部纳入展示与热度聚合；
-    // 「全网热议高分佳作」为历史误记（实为长篇榜），已移除；新书榜不再单独隐藏。
+    // 说明：对齐 fiore 首页「榜单」板块实际展示的 4 个榜（推荐/热度/口碑/长篇）。
+    // billboard 接口虽返回 5 个（含 new_book 新书榜），但 fiore 首页不把新书榜作为板块展示
+    // （新书榜是 vip-ranking 排行页的专属 tab），故仅以 4 主榜为准；"全网热议高分佳作"为历史误记（实为长篇榜），已移除。
     const HIDDEN_LIST_NAMES = new Set();
     function filterRankLists(lists) {
       return (lists || []).filter((L) => !HIDDEN_LIST_NAMES.has(L.name));
@@ -1363,9 +1364,10 @@
     let rankData = {
       updatedAt: '2026-07-30（内置快照）',
       lists: filterRankLists([
-        { name: '热度榜', items: RANK.slice(0, 5) },
-        { name: '新书榜', items: RANK.slice(5, 8) },
-        { name: '推荐榜', items: RANK.slice(0, 3).concat(RANK.slice(6, 8)) },
+        { name: '推荐榜', items: RANK.slice(0, 2) },
+        { name: '热度榜', items: RANK.slice(2, 4) },
+        { name: '口碑榜', items: RANK.slice(4, 6) },
+        { name: '长篇榜', items: RANK.slice(6, 8) },
       ]),
     };
     fetch('data/rank.json', { cache: 'no-store' })

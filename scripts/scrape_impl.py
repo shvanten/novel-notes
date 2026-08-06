@@ -8,8 +8,8 @@
   带 Referer: https://www.zhihu.com/fiore/h5/vip-web 即可拿到真实 JSON。
   返回结构：
     data[0].module_data.data.data[]  -> 每个榜
-        .head.title  = 榜名（推荐榜/热度榜/口碑榜/新书榜/长篇榜）
-        .head.type   = recommend / hot / reputation / new_book / well
+        .head.title  = 榜名（推荐榜/热度榜/口碑榜/长篇榜；接口还返回 new_book 新书榜）
+        .head.type   = recommend / hot / reputation / well / new_book
         .content_list[] -> 每本书
             .title       书名
             .subtitle    "66.7 万赞"（展示性徽章数字，不计入热度）
@@ -23,19 +23,21 @@
      打开 https://www.zhihu.com/fiore/h5/vip-web，拦截接口响应拿原始 JSON；
   3) 任何情况下抓不到都明确报错，绝不直接写空/假数据。
 
-榜名：直接使用接口返回的真实榜名（推荐榜/热度榜/口碑榜/新书榜/长篇榜），
-           不再编造/映射成不存在的榜名；输出顺序按 PREFERRED_ORDER 固定。
+榜名：对齐「fiore 首页榜单板块」实际展示的 4 个榜（推荐榜/热度榜/口碑榜/长篇榜）。
+           说明：billboard 接口实际返回 5 个（含 new_book 新书榜），但 fiore 首页「榜单」板块
+           并不把新书榜作为板块展示——新书榜是 vip-ranking 排行页（button_url 指向）的专属 tab，
+           故抓取时忽略 new_book，只保留 fiore 首页真实展示的 4 个榜；输出顺序按 PREFERRED_ORDER 固定。
 """
 import os, json, asyncio, urllib.request, urllib.error
 
 # 接口返回的榜单顺序较随意，按此顺序固定输出，保证前端展示顺序稳定
-PREFERRED_ORDER = ["推荐榜", "热度榜", "口碑榜", "新书榜", "长篇榜"]
-# 接口 type -> 真实榜名（head.title 即已是中文名，type 仅作兜底/校验）
+PREFERRED_ORDER = ["推荐榜", "热度榜", "口碑榜", "长篇榜"]
+# 接口 type -> 真实榜名。只保留 fiore 首页「榜单」板块实际展示的 4 个榜；
+# new_book（新书榜）虽由接口返回，但 fiore 首页不作为榜单板块展示，故不映射（忽略）。
 TYPE_TO_NAME = {
     "recommend": "推荐榜",
     "hot": "热度榜",
     "reputation": "口碑榜",
-    "new_book": "新书榜",
     "well": "长篇榜",
 }
 
@@ -72,7 +74,9 @@ def _parse_api_response(obj):
     for L in lists_raw:
         head = L.get("head", {}) or {}
         tname = head.get("type") or ""
-        name = TYPE_TO_NAME.get(tname) or head.get("title") or tname
+        name = TYPE_TO_NAME.get(tname)
+        if not name or name not in PREFERRED_ORDER:
+            continue  # 只保留 fiore 首页真实展示的 4 个榜（忽略 new_book 新书榜等）
         items = [_norm_item(c) for c in L.get("content_list", [])]
         items = [x for x in items if x]
         if items:
@@ -106,7 +110,7 @@ def fetch_api():
 
 
 # ----------------- 以下为 Playwright 兜底路径 -----------------
-EXPECTED_LISTS = ["推荐榜", "热度榜", "口碑榜", "新书榜", "长篇榜"]
+EXPECTED_LISTS = ["推荐榜", "热度榜", "口碑榜", "长篇榜"]
 
 
 def _candidate_lists(obj):

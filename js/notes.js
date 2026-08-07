@@ -1359,8 +1359,14 @@
     // billboard 接口虽返回 5 个（含 new_book 新书榜），但 fiore 首页不把新书榜作为板块展示
     // （新书榜是 vip-ranking 排行页的专属 tab），故仅以 4 主榜为准；"全网热议高分佳作"为历史误记（实为长篇榜），已移除。
     const HIDDEN_LIST_NAMES = new Set();
+    // 按频道隐藏的榜单：男频「盐气榜」与女频高度重合且多为女频文，从男频的展示与统计中剔除。
+    const CHANNEL_HIDDEN_LISTS = { male: new Set(['盐气榜']) };
+    function isListHidden(channel, name) {
+      const s = CHANNEL_HIDDEN_LISTS[channel];
+      return !!(s && s.has(name));
+    }
     function filterRankLists(lists) {
-      return (lists || []).filter((L) => !HIDDEN_LIST_NAMES.has(L.name));
+      return (lists || []).filter((L) => !isListHidden(L.channel || 'female', L.name));
     }
     // 为每条 list 补全 channel（旧归档无 channel 字段时默认 female，与历史口径一致）
     function nnNormLists(lists) {
@@ -1445,11 +1451,13 @@
     }
     // 用当前 rankData 写入 / 覆盖今天的快照（同一天多次打开只保留最新一份）
     function nnEnsureToday() {
-      const lists = (rankData.lists || []).map((L) => ({
-        name: L.name,
-        channel: L.channel || 'female',
-        items: (L.items || []).map((it) => ({ t: it.t, a: it.a, tag: it.tag, d: it.d })),
-      }));
+      const lists = (rankData.lists || [])
+        .filter((L) => !isListHidden(L.channel || 'female', L.name))
+        .map((L) => ({
+          name: L.name,
+          channel: L.channel || 'female',
+          items: (L.items || []).map((it) => ({ t: it.t, a: it.a, tag: it.tag, d: it.d })),
+        }));
       if (!lists.length) return;
       const t = nnToday();
       const last = nnHistory.length ? nnHistory[nnHistory.length - 1] : null;
@@ -1460,10 +1468,12 @@
     function nnPurgeDropped() {
       const onChart = nnOnChart();
       nnHistory.forEach((snap) => {
-        snap.lists = (snap.lists || []).map((L) => ({
-          name: L.name,
-          items: (L.items || []).filter((it) => onChart[it.t] || nnIsKept(it.t)),
-        }));
+        snap.lists = (snap.lists || [])
+          .filter((L) => !isListHidden(L.channel || 'female', L.name))
+          .map((L) => ({
+            name: L.name,
+            items: (L.items || []).filter((it) => onChart[it.t] || nnIsKept(it.t)),
+          }));
       });
     }
     function nnApplySnapshot() {
@@ -1495,7 +1505,9 @@
           const valid = (Array.isArray(snaps) ? snaps : []).filter((s) => s && s.date && Array.isArray(s.lists))
             .map((s) => ({
               date: s.date,
-              lists: s.lists.map((L) => ({ name: L.name, channel: L.channel || 'female', items: L.items || [] })),
+              lists: s.lists
+                .filter((L) => !isListHidden(L.channel || 'female', L.name))
+                .map((L) => ({ name: L.name, channel: L.channel || 'female', items: L.items || [] })),
             }));
           if (valid.length) nnHistory = valid.slice(-HIST_MAX);
         })
@@ -1554,7 +1566,7 @@
         let v = 0;
         (snap.lists || []).forEach((L) => {
           if (channel && (L.channel || 'female') !== channel) return;
-          if (HIDDEN_LIST_NAMES.has(L.name)) return;
+          if (isListHidden(L.channel || 'female', L.name)) return;
           (L.items || []).forEach((it, idx) => {
             const p = parseTag(it.tag);
             if (p.tags.indexOf(tag) >= 0) v += nnHeatWeight(idx + 1, L.items.length);
@@ -1570,7 +1582,7 @@
         let found = false, rank = 0;
         (snap.lists || []).forEach((L) => {
           if (channel && (L.channel || 'female') !== channel) return;
-          if (HIDDEN_LIST_NAMES.has(L.name)) return;
+          if (isListHidden(L.channel || 'female', L.name)) return;
           (L.items || []).forEach((it, idx) => {
             if (it.t === title) { const r = idx + 1; if (!found || r < rank) { found = true; rank = r; } }
           });
@@ -1733,7 +1745,7 @@
     function paintRank() {
       // 频道切换（女生 / 男生）
       const allLists = rankData.lists || [];
-      const chanLists = allLists.filter((L) => L.channel === activeChannel);
+      const chanLists = allLists.filter((L) => L.channel === activeChannel && !isListHidden(activeChannel, L.name));
       if (!activeRankKey || (activeRankKey !== '__summary' && !chanLists.find((L) => L.name === activeRankKey))) {
         activeRankKey = chanLists[0] ? chanLists[0].name : '热度榜';
       }
@@ -1829,7 +1841,7 @@
     // 见文件顶部「模块级纯函数」：nnHeatWeight
 
     function buildSummary() {
-      const lists = (rankData.lists || []).filter((L) => L.channel === activeChannel);
+      const lists = (rankData.lists || []).filter((L) => L.channel === activeChannel && !isListHidden(activeChannel, L.name));
       // 1) 全榜书数
       const totalItems = lists.reduce((s, L) => s + (L.items ? L.items.length : 0), 0);
       // 2) 全榜总热度分（按榜单位置权重累加，不再累计点赞量）
@@ -1874,7 +1886,7 @@
       if (!nnCurTag || topTags.indexOf(nnCurTag) < 0) nnCurTag = topTags[0] || '';
 
       // 各榜单的标签贡献（按榜单分组计算占比）— 趋势
-      const lists = (rankData.lists || []).filter((L) => L.channel === activeChannel);
+      const lists = (rankData.lists || []).filter((L) => L.channel === activeChannel && !isListHidden(activeChannel, L.name));
       const trendRows = lists.map((L) => {
         const counts = {};
         let total = 0;

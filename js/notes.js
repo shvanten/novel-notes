@@ -1721,7 +1721,9 @@
     function nnBindChanToggle(scope) {
       scope.querySelectorAll('#nn-nav-channel .nn-nav-ch-btn').forEach((b) => {
         b.addEventListener('click', () => {
-          activeChannel = b.dataset.channel;
+          const newCh = b.dataset.channel;
+          if (newCh !== activeChannel) summaryData = null; // 频道变了，总结需按新频道重算
+          activeChannel = newCh;
           if (view === 'summary') paintSummary();
           else paintRank();
         });

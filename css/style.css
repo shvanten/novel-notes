@@ -1348,6 +1348,9 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
 [data-theme="dark"] .nn-rank-metric.cat-raw   { color: #aaa; background: #2a2a2a; border-color: #3a3a3a; }
 .nn-rank-desc { font-size: 12.5px; line-height: 1.6; color: var(--text); margin-top: 4px; }
 .nn-rank-fav { align-self: center; white-space: nowrap; }
+.nn-rank-acts { display: flex; flex-direction: column; gap: 6px; align-self: center; }
+.nn-rank-read { align-self: center; white-space: nowrap; background: var(--accent); border-color: var(--accent); color: #fff; }
+.nn-rank-read:hover { background: var(--accent-deep); }
 
 /* ============================================================
    心情日历 + 每周小结 + 近期可视化
@@ -2621,6 +2624,20 @@ code { background: var(--surface-2); padding: 2px 7px; border-radius: 7px; font-
   font-size: 11px; opacity: .8; background: rgba(0,0,0,.08); padding: 1px 6px; border-radius: 999px;
 }
 .nn-nav-rank-btn.on .nn-nav-rank-count { background: rgba(255,255,255,.22); }
+
+.nn-nav-channel {
+  display: flex; gap: 6px;
+  margin-bottom: 10px;
+}
+.nn-nav-ch-btn {
+  display: inline-flex; align-items: center;
+  padding: 5px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.nn-nav-ch-btn:hover { color: var(--accent-deep); }
+.nn-nav-ch-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 
 /* 总结页 */
 .nn-sum-hero {

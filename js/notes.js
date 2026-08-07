@@ -347,6 +347,7 @@
     let suppressPaint = false;
     let activeTabKey = 'title';   // 记录最后一次停留的分页，重绘后恢复，避免保存后跳回标题
     let activeRankKey = null;     // 当前选中的榜单（在 summary 视图下用于顶部导航）
+    let activeChannel = 'female'; // 当前查看的频道（女生/男生），控制榜单与趋势口径
     let summaryData = null;       // 标签分析缓存（rankData 变时重建）
 
     // ---------- 骨架：左侧导航 + 右侧详情 ----------
@@ -1361,20 +1362,35 @@
     function filterRankLists(lists) {
       return (lists || []).filter((L) => !HIDDEN_LIST_NAMES.has(L.name));
     }
+    // 为每条 list 补全 channel（旧归档无 channel 字段时默认 female，与历史口径一致）
+    function nnNormLists(lists) {
+      return (lists || []).map((L) => ({ name: L.name, channel: L.channel || 'female', items: L.items || [] }));
+    }
+    // 兼容两种归档格式：扁平 {lists}（新主源）与频道分组 {channels}（rank-web.json 别名）。
+    function nnFlattenRank(j) {
+      let lists = [];
+      if (j && Array.isArray(j.lists)) lists = j.lists;
+      else if (j && j.channels && typeof j.channels === 'object') {
+        Object.keys(j.channels).forEach((ch) => {
+          (j.channels[ch].lists || []).forEach((L) => lists.push(Object.assign({}, L, { channel: ch })));
+        });
+      }
+      return nnNormLists(lists);
+    }
     let rankData = {
       updatedAt: '2026-07-30（内置快照）',
-      lists: filterRankLists([
+      lists: filterRankLists(nnNormLists([
         { name: '推荐榜', items: RANK.slice(0, 2) },
         { name: '热度榜', items: RANK.slice(2, 4) },
         { name: '口碑榜', items: RANK.slice(4, 6) },
         { name: '长篇榜', items: RANK.slice(6, 8) },
-      ]),
+      ])),
     };
     fetch('data/rank.json', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        if (j && Array.isArray(j.lists) && j.lists.length) {
-          rankData = Object.assign({}, j, { lists: filterRankLists(j.lists) });
+        if (j && (Array.isArray(j.lists) || (j.channels && typeof j.channels === 'object'))) {
+          rankData = Object.assign({}, j, { lists: filterRankLists(nnFlattenRank(j)) });
           summaryData = null; // 榜单数据变了，总结需要重算
           if (view === 'rank' || view === 'summary') paint();
         }
@@ -1431,6 +1447,7 @@
     function nnEnsureToday() {
       const lists = (rankData.lists || []).map((L) => ({
         name: L.name,
+        channel: L.channel || 'female',
         items: (L.items || []).map((it) => ({ t: it.t, a: it.a, tag: it.tag, d: it.d })),
       }));
       if (!lists.length) return;
@@ -1475,7 +1492,11 @@
           ));
         })
         .then((snaps) => {
-          const valid = (Array.isArray(snaps) ? snaps : []).filter((s) => s && s.date && Array.isArray(s.lists));
+          const valid = (Array.isArray(snaps) ? snaps : []).filter((s) => s && s.date && Array.isArray(s.lists))
+            .map((s) => ({
+              date: s.date,
+              lists: s.lists.map((L) => ({ name: L.name, channel: L.channel || 'female', items: L.items || [] })),
+            }));
           if (valid.length) nnHistory = valid.slice(-HIST_MAX);
         })
         .catch(() => {})
@@ -1528,10 +1549,11 @@
         return { label: buckets[key].label, value: value };
       });
     }
-    function nnTagSeries(tag, mode) {
+    function nnTagSeries(tag, mode, channel) {
       const rows = nnHistory.map((snap) => {
         let v = 0;
         (snap.lists || []).forEach((L) => {
+          if (channel && (L.channel || 'female') !== channel) return;
           if (HIDDEN_LIST_NAMES.has(L.name)) return;
           (L.items || []).forEach((it, idx) => {
             const p = parseTag(it.tag);
@@ -1542,11 +1564,12 @@
       });
       return nnGroup(rows, mode, false);
     }
-    function nnBookSeries(title, mode) {
+    function nnBookSeries(title, mode, channel) {
       // 返回《书名》在各主榜中的「排名位置」（取最优/最小名次）。1=榜首，数字越大名次越低。
       const rows = nnHistory.map((snap) => {
         let found = false, rank = 0;
         (snap.lists || []).forEach((L) => {
+          if (channel && (L.channel || 'female') !== channel) return;
           if (HIDDEN_LIST_NAMES.has(L.name)) return;
           (L.items || []).forEach((it, idx) => {
             if (it.t === title) { const r = idx + 1; if (!found || r < rank) { found = true; rank = r; } }
@@ -1661,8 +1684,9 @@
       });
     }
     // 单本书的热度趋势弹窗（榜单条目点开）
-    function nnOpenBookTrend(title) {
+    function nnOpenBookTrend(title, channel) {
       if (!title) return;
+      const chName = (channel === 'male') ? '男生' : '女生';
       const overlay = document.createElement('div');
       overlay.className = 'nn-modal-mask';
       overlay.innerHTML =
@@ -1671,14 +1695,14 @@
         '    <button class="nn-modal-x" type="button" aria-label="关闭">×</button></div>' +
         '  ' + nnSegHtml('nn-modal-seg', 'day') +
         '  <div class="nn-line-wrap" id="nn-modal-line"></div>' +
-        '  <div class="nn-modal-meta">统计全部榜单（推荐/热度/口碑/新书/长篇）· 未在榜的日期按 0 计。' +
+        '  <div class="nn-modal-meta">统计' + chName + '频道全部榜单（推荐/热度/口碑/新书/长篇/潜力/互动）· 未在榜的日期按 0 计。' +
         (nnIsKept(title) ? '该书已收藏，历史将永久保留。' : '收藏或加入书架后，下榜也会保留历史。') +
         '</div>' +
         '</div>';
       document.body.appendChild(overlay);
       const draw = (p) => {
         const el = overlay.querySelector('#nn-modal-line');
-        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p), { invert: true, rankMax: 9, fmt: (v) => '排名 ' + v });
+        if (el) el.innerHTML = nnLineChart(nnBookSeries(title, p, channel), { invert: true, rankMax: 9, fmt: (v) => '排名 ' + v });
       };
       draw('day');
       nnBindSeg(overlay, 'nn-modal-seg', draw);
@@ -1686,13 +1710,32 @@
       overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     }
 
+    // 频道切换控件（女生 / 男生）
+    function nnChanToggleHtml() {
+      return '<div class="nn-nav-channel" id="nn-nav-channel">' +
+        [['female', '女生'], ['male', '男生']].map((p) =>
+          '<button class="nn-nav-ch-btn' + (p[0] === activeChannel ? ' on' : '') +
+          '" data-channel="' + p[0] + '" type="button">' + p[1] + '</button>'
+        ).join('') + '</div>';
+    }
+    function nnBindChanToggle(scope) {
+      scope.querySelectorAll('#nn-nav-channel .nn-nav-ch-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+          activeChannel = b.dataset.channel;
+          if (view === 'summary') paintSummary();
+          else paintRank();
+        });
+      });
+    }
+
     function paintRank() {
-      // 顶部一行 tab：每个榜单一个 + 「总结」
-      const lists = rankData.lists || [];
-      if (!activeRankKey || (activeRankKey !== '__summary' && !lists.find((L) => L.name === activeRankKey))) {
-        activeRankKey = lists[0] ? lists[0].name : '热度榜';
+      // 频道切换（女生 / 男生）
+      const allLists = rankData.lists || [];
+      const chanLists = allLists.filter((L) => L.channel === activeChannel);
+      if (!activeRankKey || (activeRankKey !== '__summary' && !chanLists.find((L) => L.name === activeRankKey))) {
+        activeRankKey = chanLists[0] ? chanLists[0].name : '热度榜';
       }
-      const navHtml = lists.map((L) =>
+      const navHtml = chanLists.map((L) =>
         '<button class="nn-nav-rank-btn' + (L.name === activeRankKey ? ' on' : '') +
         '" data-rank="' + App.escapeHtml(L.name) + '" type="button">' +
         App.escapeHtml(L.name) + '<i class="nn-nav-rank-count">' + (L.items ? L.items.length : 0) + '</i>' +
@@ -1707,7 +1750,7 @@
         return;
       }
 
-      const cur = lists.find((L) => L.name === activeRankKey) || lists[0] || { name: '榜单', items: [] };
+      const cur = chanLists.find((L) => L.name === activeRankKey) || chanLists[0] || { name: '榜单', items: [] };
       const listHtml = (cur.items || []).map((r, i) =>
         '<div class="nn-rank-item" data-open="' + App.escapeHtml(r.t) + '" title="点击查看《' + App.escapeHtml(r.t) + '》排名趋势">' +
         '  <div class="nn-rank-no">' + (i + 1) + '</div>' +
@@ -1717,17 +1760,23 @@
         : '') + '</div>' +
       '    <div class="nn-rank-desc">' + App.escapeHtml(r.d || '') + '</div>' +
         '  </div>' +
-        '  <button class="nn-chip sm nn-rank-fav" data-fav="' + App.escapeHtml(r.t) + '" type="button">收藏为书</button>' +
+        '  <div class="nn-rank-acts">' +
+        (r.url ? '<button class="nn-chip sm nn-rank-read" data-url="' + App.escapeHtml(r.url) + '" type="button">去阅读</button>' : '') +
+        '    <button class="nn-chip sm nn-rank-fav" data-fav="' + App.escapeHtml(r.t) + '" type="button">收藏为书</button>' +
+        '  </div>' +
         '</div>'
       ).join('');
 
       mainEl.innerHTML =
         '<div class="nn-rank">' +
+        '  ' + nnChanToggleHtml() +
         '  <div class="nn-nav-rank" id="nn-nav-rank">' + navHtml + '</div>' +
-        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点条目看排名趋势，点「收藏为书」创建拆文本。</p>' +
+        '  <p class="muted nn-rank-tip">知乎盐言故事 · <b>' + App.escapeHtml(cur.name) + '</b> · 更新于 ' + App.escapeHtml(rankData.updatedAt || '—') + '。点条目看排名趋势，点「去阅读」跳转知乎，点「收藏为书」创建拆文本。</p>' +
         '  <div class="nn-rank-list">' + listHtml + '</div>' +
         '</div>';
 
+      // 频道切换
+      nnBindChanToggle(mainEl);
       // 顶部 tab 切换
       mainEl.querySelectorAll('.nn-nav-rank-btn').forEach((b) => {
         b.addEventListener('click', (e) => {
@@ -1736,10 +1785,18 @@
           paintRank();
         });
       });
-      // 点条目 → 该书热度趋势弹窗
+      // 点条目 → 该书热度趋势弹窗（按当前频道）
       mainEl.querySelectorAll('.nn-rank-item').forEach((it) => {
-        it.addEventListener('click', () => nnOpenBookTrend(it.dataset.open));
+        it.addEventListener('click', () => nnOpenBookTrend(it.dataset.open, activeChannel));
       });
+      // 去阅读
+      mainEl.querySelectorAll('[data-url]').forEach((b) =>
+        b.addEventListener('click', (e) => {
+          e.stopPropagation(); // 别冒泡到条目，否则会同时弹出趋势图
+          const u = b.dataset.url;
+          if (u) window.open(u, '_blank', 'noopener');
+        })
+      );
       // 收藏为书
       mainEl.querySelectorAll('[data-fav]').forEach((b) =>
         b.addEventListener('click', (e) => {
@@ -1770,7 +1827,7 @@
     // 见文件顶部「模块级纯函数」：nnHeatWeight
 
     function buildSummary() {
-      const lists = rankData.lists || [];
+      const lists = (rankData.lists || []).filter((L) => L.channel === activeChannel);
       // 1) 全榜书数
       const totalItems = lists.reduce((s, L) => s + (L.items ? L.items.length : 0), 0);
       // 2) 全榜总热度分（按榜单位置权重累加，不再累计点赞量）
@@ -1809,12 +1866,13 @@
       const { totalItems, totalScore, tagRows } = summaryData;
       const maxScore = tagRows.length ? tagRows[0].score : 1;
       const nav = prebuiltNav || '';
+      const chanToggle = nnChanToggleHtml();
       // 折线图默认选中热度第一的标签；若之前选的标签已不在榜则回退
       const topTags = tagRows.slice(0, 12).map((r) => r.tag);
       if (!nnCurTag || topTags.indexOf(nnCurTag) < 0) nnCurTag = topTags[0] || '';
 
       // 各榜单的标签贡献（按榜单分组计算占比）— 趋势
-      const lists = rankData.lists || [];
+      const lists = (rankData.lists || []).filter((L) => L.channel === activeChannel);
       const trendRows = lists.map((L) => {
         const counts = {};
         let total = 0;
@@ -1846,10 +1904,11 @@
       const navHtml = nav
         ? '<div class="nn-nav-rank">' + nav + '</div>'
         : '';
+      const topBar = chanToggle + navHtml;
 
       mainEl.innerHTML =
         '<div class="nn-sum">' +
-        navHtml +
+        topBar +
         '  <div class="nn-sum-hero">' +
         '    <div class="nn-sum-hero-cell"><span class="muted">在榜书数</span><b>' + totalItems + '</b></div>' +
         '    <div class="nn-sum-hero-cell"><span class="muted">总热度</span><b>' + App.formatCount(totalScore) + '</b></div>' +
@@ -1888,7 +1947,7 @@
       // 标签热度趋势：切标签 / 切周期
       function paintTagTrend() {
         const el = mainEl.querySelector('#nn-tag-line');
-        if (el) el.innerHTML = nnLineChart(nnTagSeries(nnCurTag, nnCurPeriod));
+        if (el) el.innerHTML = nnLineChart(nnTagSeries(nnCurTag, nnCurPeriod, activeChannel));
       }
       mainEl.querySelectorAll('#nn-tag-chips .nn-tag-chip').forEach((c) => {
         c.addEventListener('click', () => {
@@ -1914,6 +1973,7 @@
           });
         });
       }
+      nnBindChanToggle(mainEl); // 频道切换（榜单页内 / 独立总结页都生效）
     }
 
     // ---------- 全部摘抄 / 全部分析（不分书） ----------

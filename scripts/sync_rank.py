@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-知乎盐言故事（fiore vip-web）榜单：抓取 → 归档 → 推送 GitHub。
+知乎盐言故事榜单：抓取 → 归档 → 推送 GitHub。
 
 这是「数据分析及可视化」场景里榜单数据的生产管线。
-- 抓取（见 scripts/scrape_impl.py）：
-    首选直连 JSON 接口（已实测无需登录/签名）：
-      GET https://api.zhihu.com/km-vip-zhihu-web/vip_tab/svip_story?modules=billboard
-    该接口返回 5 个榜（推荐/热度/口碑/新书/长篇，各 12 本），但 fiore 首页「榜单」板块只展示
-    推荐/热度/口碑/长篇 4 个（新书榜是 vip-ranking 排行页专属 tab），故抓取时只保留这 4 个；
-    若接口失败，再回退真实浏览器（Playwright，可带登录 cookie）拦截接口响应。
-    接口不返回作者字段，a 保留为空（不丢字段）。
-- 归档：
-    * data/rank.json               —— 当前实时快照（fiore 首页 4 榜：推荐/热度/口碑/长篇）
-    * data/rank-history/<日期>.json —— 当日归档（同 4 榜，item 仅留 t/a/tag/d）
+- 抓取（见 scripts/scrape_web.py）：
+    改用网页真实榜单接口（km-indep-home-comm/billboard/list），纯 urllib 直连，免登录免签名。
+    抓取「网页真实 7 榜」（盐气/热度/长篇/新书/口碑/潜力/互动）× 男女双频道，全部带作者字段
+    （这是相对旧 fiore billboard 接口的关键升级：旧接口无作者、仅 4 榜）。
+- 归档（升级为全网最全口径）：
+    * data/rank.json               —— 当前实时快照（扁平 lists，每个 list 带 channel；item 含 t/a/tag/d/url 等）
+    * data/rank-history/<日期>.json —— 当日归档（同结构，item 仅留 t/a/tag/d，list 带 channel）
     * data/rank-history.json       —— 日期清单数组（追加当天，保持有序）
+    * data/rank-web.json           —— 同源源的频道分组快照（与归档同源，便于单独查看）
 - 推送：仅 add 明确路径（严禁 git add -A），commit 后用 -c http.sslVerify=false 推送，
         规避本机 git 2.54 的 schannel 证书吊销检查失败。
 
@@ -24,9 +22,7 @@
   python scripts/sync_rank.py --archive-only # 不抓取，用现有 data/rank.json 重新归档当天
   python scripts/sync_rank.py --date 2026-08-06  # 指定归档日期（调试用）
 
-依赖（仅浏览器兜底路径需要）：pip install playwright 并安装系统 Chrome/Edge 即可（无需下载 chromium）。
-若接口失效且页面需登录：python scripts/sync_rank.py --cookies scripts/cookies.json
-  cookies.json 形如 [{"name":"...","value":"...","domain":".zhihu.com","path":"/"}]
+注：旧 fiore 4 榜抓取实现保留在 scripts/scrape_impl.py，但本管线已不再调用（无作者、仅 4 榜）。
 """
 import os, sys, json, argparse, subprocess, datetime
 
@@ -54,27 +50,34 @@ def _norm_item(it):
 
 
 def archive(data, date=None, root=ROOT):
-    """把一份 rank 数据写入 data/rank.json 与当日归档，并更新清单。返回归档文件路径。"""
+    """把一份 rank 数据写入 data/rank.json 与当日归档，并更新清单。返回归档文件路径。
+    data 期望含扁平 'lists'（每项 {name, channel, items}）与 'channels'（分组，用于 rank-web.json）。"""
     date = date or today_str()
     lists = data.get("lists", [])
+    data["fetchedAt"] = data.get("fetchedAt") or date
     rank_json = os.path.join(root, "data", "rank.json")
     history_dir = os.path.join(root, "data", "rank-history")
     manifest = os.path.join(root, "data", "rank-history.json")
+    rank_web = os.path.join(root, "data", "rank-web.json")
 
-    # 1) 当前实时快照（保留全部榜单，含新书榜）
+    # 1) 当前实时快照（扁平 lists，每个 list 带 channel；item 保留 url 等富字段）
     src = data.get("source") or SOURCE
     cur = {"updatedAt": date, "source": src, "lists": lists}
     os.makedirs(os.path.dirname(rank_json), exist_ok=True)
     with open(rank_json, "w", encoding="utf-8") as f:
         json.dump(cur, f, ensure_ascii=False, indent=2)
 
-    # 2) 当日归档：剔除新书榜，item 仅留 t/a/tag/d
+    # 1b) 网页全量快照（频道分组，含作者/标签/封面/链接），与归档主源同源
+    with open(rank_web, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    # 2) 当日归档：item 仅留 t/a/tag/d，list 保留 channel（供前端/趋势按频道隔离）
     arch_lists = []
     for L in lists:
         if L.get("name") in HIDDEN_LIST_NAMES:
             continue
         items = [_norm_item(it) for it in L.get("items", [])]
-        arch_lists.append({"name": L["name"], "items": items})
+        arch_lists.append({"name": L["name"], "channel": L.get("channel", "female"), "items": items})
     os.makedirs(history_dir, exist_ok=True)
     arch_path = os.path.join(history_dir, date + ".json")
     with open(arch_path, "w", encoding="utf-8") as f:
@@ -115,11 +118,11 @@ def _authed_push_url(root):
     return "https://%s:@%s" % (tok, rest)
 
 
-def git_commit_push(msg, root=ROOT):
+def git_commit_push(msg, root=ROOT, date=None):
     """仅 add 明确路径，commit，并用 -c http.sslVerify=false 推送（非交互）。
     返回是否真的提交了。"""
-    day_file = os.path.join("data", "rank-history", today_str() + ".json")
-    files = ["data/rank.json", "data/rank-history.json", day_file]
+    day_file = os.path.join("data", "rank-history", (date or today_str()) + ".json")
+    files = ["data/rank.json", "data/rank-web.json", "data/rank-history.json", day_file]
     subprocess.run(["git", "-C", root, "add"] + files, check=True)
     if subprocess.run(["git", "-C", root, "diff", "--cached", "--quiet"]).returncode == 0:
         print("[sync] 无变化，跳过提交。")
@@ -142,12 +145,12 @@ def git_commit_push(msg, root=ROOT):
 
 def scrape_rank(cookies_path=""):
     """
-    抓取榜单：优先直连接口（scrape_impl.fetch_api），失败回退浏览器。
-    返回 {"updatedAt":..., "source":..., "lists":[{name, items:[{t,a,tag,d}]}]}。
+    抓取榜单：改用网页真实榜单接口（scrape_web.scrape_web），男女双频道 7 榜全量（含作者）。
+    返回 {"fetchedAt":..., "channels":{...}, "lists":[{name, channel, items:[{t,a,tag,d,url,...}]}]}。
+    注：scrape_web 为纯 urllib 直连，免登录免签名；不再依赖 fiore billboard 接口（无作者、仅 4 榜）。
     """
-    import asyncio
-    from scrape_impl import run_scrape
-    return asyncio.run(run_scrape(cookies_path=cookies_path))
+    from scrape_web import scrape_web
+    return scrape_web(channels=("female", "male"))
 
 
 def main():
@@ -174,7 +177,7 @@ def main():
     if args.no_push:
         print("[sync] --no-push：跳过推送。")
         return
-    git_commit_push("chore(rank): 自动归档榜单 %s" % date)
+    git_commit_push("chore(rank): 自动归档榜单 %s" % date, date=date)
 
 
 if __name__ == "__main__":

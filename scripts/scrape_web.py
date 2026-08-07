@@ -131,6 +131,12 @@ def scrape_web(channels=("female",), limit=50):
             "channel": ch,
             "lists": lists,
         }
+    # 同时产出扁平 lists（每个 list 带 channel），供归档主源(flat)与前端直接使用
+    flat = []
+    for _ch, blob in result["channels"].items():
+        for L in blob["lists"]:
+            flat.append({"name": L["name"], "channel": _ch, "items": L["items"]})
+    result["lists"] = flat
     return result
 
 
